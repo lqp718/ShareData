@@ -6,8 +6,9 @@ import time
 import random
 import logging
 import json
-from bson.objectid import ObjectId
+import os
 
+from bson.objectid import ObjectId
 from pymongo import MongoClient
 from error import trace_log
 
@@ -23,8 +24,17 @@ if __name__ == '__main__':
 	console_logger.setFormatter(logging.Formatter("%(message)s"))
 	logging.getLogger().addHandler(console_logger)
 
-	date = datetime.datetime.strptime(cfg.StartDate, "%Y-%m-%d")
 	delta = datetime.timedelta(days=1)
+	try:
+		if os.path.exists("lastSuccess.txt"):
+			with open("lastSuccess.txt", 'r') as f:
+				StartDate = f.read().replace(' ', '')
+			date = datetime.datetime.strptime(StartDate, "%Y-%m-%d") + delta
+		else:
+			date = datetime.datetime.strptime(cfg.StartDate, "%Y-%m-%d")
+	except:
+		date = datetime.datetime.strptime(cfg.StartDate, "%Y-%m-%d")
+
 	i = 0
 
 	dic = {
@@ -60,11 +70,15 @@ if __name__ == '__main__':
 					dic['tick'] = json.loads(SortDf.to_json(orient = "index"))
 					InsertResult = Collection.insert_one(dic)
 					if InsertResult.acknowledged:
+						with open("lastSuccess.txt", "w") as f:
+							f.write(date.strftime("%Y-%m-%d"))
 						logging.debug("Insert data successful ObjectId = %s" %(InsertResult.inserted_id))
 					else:
 						logging.debug("Insert data fail")
 					
 			else:
+				with open("lastSuccess.txt", "w") as f:
+					f.write(date.strftime("%Y-%m-%d"))
 				logging.debug("No k_data, pass")
 
 			if date.strftime("%Y-%m-%d") == datetime.datetime.now().strftime('%Y-%m-%d'):
