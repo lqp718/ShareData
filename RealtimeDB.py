@@ -1,6 +1,6 @@
 import tushare as ts
 import time
-from pandas import DataFrame as DF
+from pandas import DataFrame as df
 import config as cfg
 import json
 
@@ -10,7 +10,10 @@ per_amount = None
 
 class Realtime():
 	def __init__(self):
-		self.ShareDf = DF()
+		self.ShareDetail = df()
+		self.ShareInfo = df()
+		self.high = 0
+		self.low = 0
 		pass
 
 	def __del__(self):
@@ -18,13 +21,29 @@ class Realtime():
 
 	def get(self):
 		df = ts.get_realtime_quotes(cfg.ShareCode)
+
 		if df is not None:
-			if self.ShareDf.empty:
-				self.ShareDf = self.ShareDf.append(df, ignore_index = True)
+
+			if self.ShareInfo.empty:
+				self.ShareInfo = df.loc[:, ['date', 'open', 'pre_close']]
+
+			if self.high == 0 or self.high <= df['high'].values[0]:
+				self.high = df['high'].values[0]
+
+			if self.low == 0 or self >= df['low'].values[0]:
+				self.low = df['low'].values[0]
+
+			vls = [cls for cls in df.columns if '_v' in cls]
+			pls = [cls for cls in df.columns if '_p' in cls]
+
+			df = df.loc[:,['time'] + ['price'] + vls + pls]
+
+			if self.ShareDetail.empty:
+				self.ShareDetail = self.ShareDetail.append(df, ignore_index = True)
 			else:
-				tail = self.ShareDf.tail(1).reset_index(drop = True)
+				tail = self.ShareDetail.tail(1).reset_index(drop = True)
 				if not tail.equals(df):
-					self.ShareDf = self.ShareDf.append(df, ignore_index = True)
+					self.ShareDetail = self.ShareDetail.append(df, ignore_index = True)
 
 #Test code>>>
 if __name__ == '__main__':
@@ -32,5 +51,5 @@ if __name__ == '__main__':
 	while True:
 		RT.get()
 		time.sleep(1)
-		print RT.ShareDf
+		print RT.ShareDetail
 #Test code<<<
