@@ -16,12 +16,15 @@ per_amount = None
 class Realtime():
 	def __init__(self):
 		self.ShareDetail = df()
-		self.ShareInfo = df()
 		self.high = 0
 		self.low = 0
+		self.open = 0
+		self.pre_close = 0
 		self.ShareDic = {
 			"_id": None,
 			"date": "XXXX-XX-XX",
+			"open": None,
+			"pre_close": None,
 			"high": None,
 			"low": None,
 			"detail": None
@@ -34,12 +37,17 @@ class Realtime():
 	def get(self):
 		df = ts.get_realtime_quotes(cfg.ShareCode)
 		if df is not None:
-			if self.ShareInfo.empty:
-				self.ShareInfo = df.loc[:, ['date', 'open', 'pre_close']]
 
-			if self.high == 0 or self.high <= df['high'].astype('float').values[0]:
+			if self.open != df['open'].astype('float').values[0]:
+				self.open = df['open'].astype('float').values[0]
+
+			if self.pre_close != df['pre_close'].astype('float').values[0]:
+				self.pre_close = df['pre_close'].astype('float').values[0]
+
+			if self.high != df['high'].astype('float').values[0]:
 				self.high = df['high'].astype('float').values[0]
-			if self.low == 0 or self.low >= df['low'].astype('float').values[0]:
+
+			if self.low != df['low'].astype('float').values[0]:
 				self.low = df['low'].astype('float').values[0]
 
 			vls = [cls for cls in df.columns if '_v' in cls]
@@ -69,6 +77,8 @@ class Realtime():
 		self.ShareDic['_id'] = ObjectId()
 		self.ShareDic['high'] = self.high
 		self.ShareDic['low'] = self.low
+		self.ShareDic['open'] = self.open
+		self.ShareDic['pre_close'] = self.pre_close
 		self.ShareDic['date'] = datetime.datetime.now().strftime('%Y-%m-%d')
 
 		self.ShareDic['detail'] = json.loads(self.ShareDetail.to_json(orient = "index"))
@@ -80,10 +90,12 @@ if __name__ == '__main__':
 	RT = Realtime()
 	i = 0
 	while True:
+		if datetime.datetime.strptime(datetime.datetime.now().strftime('%H:%M:%S'), '%H:%M:%S') <= datetime.datetime.strptime("09:25:00", '%H:%M:%S'):
+			time.sleep(1)
+			continue
 		RT.get()
 		time.sleep(1)
-		print RT.ShareDetail
-		if datetime.datetime.now().strftime('%H:%M:%S') == "15:01:00":
+		if datetime.datetime.strptime(datetime.datetime.now().strftime('%H:%M:%S'), '%H:%M:%S') >= datetime.datetime.strptime("15:00:30", '%H:%M:%S'):
 			break
 
 	RT.StoreToDB()
