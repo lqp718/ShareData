@@ -39,7 +39,7 @@ if __name__ == '__main__':
 
 	dic = {
 	"_id": None,
-	"date": "XXXX-XX-XX",
+	"date": None,
 	"k_data": None,
 	"tick": None
 	}
@@ -53,12 +53,10 @@ if __name__ == '__main__':
 	while True:
 		t = random.uniform(1, 5)
 		try:
-			dic['date'] = date.strftime("%Y-%m-%d")
+			dic['date'] = date
 			logging.debug(dic['date'])
-			df = ts.get_k_data(cfg.ShareCode, start=date.strftime("%Y-%m-%d"), end=date.strftime("%Y-%m-%d"), autype = None)
+			df = ts.get_hist_data(cfg.ShareCode, start=date.strftime("%Y-%m-%d"), end=date.strftime("%Y-%m-%d"))
 			if df is not None and len(df) != 0:
-				del df['code']
-				del df['date']
 				dic['_id'] = ObjectId()
 				dic['k_data'] = json.loads(df.to_json(orient = "records"))[0]
 				df = ts.get_tick_data(cfg.ShareCode, date=date.strftime("%Y-%m-%d"), retry_count=10, pause=4)
