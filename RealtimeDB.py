@@ -79,7 +79,8 @@ class Realtime():
 		self.ShareDic['low'] = self.low
 		self.ShareDic['open'] = self.open
 		self.ShareDic['pre_close'] = self.pre_close
-		self.ShareDic['date'] = datetime.datetime.now().strftime('%Y-%m-%d')
+		DateStr = datetime.datetime.now().strftime('%Y-%m-%d')
+		self.ShareDic['date'] = datetime.datetime.strptime(DateStr, "%Y-%m-%d")
 
 		self.ShareDic['detail'] = json.loads(self.ShareDetail.to_json(orient = "index"))
 
@@ -90,12 +91,15 @@ if __name__ == '__main__':
 	RT = Realtime()
 	i = 0
 	while True:
-		if datetime.datetime.strptime(datetime.datetime.now().strftime('%H:%M:%S'), '%H:%M:%S') <= datetime.datetime.strptime("09:25:00", '%H:%M:%S'):
+		t = datetime.datetime.strptime(datetime.datetime.now().strftime('%H:%M:%S'), '%H:%M:%S')
+		if t <= datetime.datetime.strptime("09:25:00", '%H:%M:%S') or \
+		   t >= datetime.datetime.strptime("15:00:30", '%H:%M:%S'):
+			print t
 			time.sleep(1)
 			continue
 		RT.get()
 		time.sleep(1)
-		if datetime.datetime.strptime(datetime.datetime.now().strftime('%H:%M:%S'), '%H:%M:%S') >= datetime.datetime.strptime("15:00:30", '%H:%M:%S'):
+		if t >= datetime.datetime.strptime("15:00:20", '%H:%M:%S'):
 			break
 
 	RT.StoreToDB()
