@@ -4,7 +4,7 @@ import config as cfg
 import json
 import datetime
 
-from pandas import DataFrame as df
+from pandas import DataFrame as DF
 from bson.objectid import ObjectId
 from pymongo import MongoClient
 from error import trace_log
@@ -15,7 +15,8 @@ per_amount = None
 
 class Realtime():
 	def __init__(self):
-		self.ShareDetail = df()
+		self.ShareDetail = DF()
+		self.pre_get_df = DF()
 		self.high = 0
 		self.low = 0
 		self.open = 0
@@ -36,6 +37,12 @@ class Realtime():
 
 	def get(self):
 		df = ts.get_realtime_quotes(cfg.ShareCode)
+		print df
+		for col in df.columns:
+			if col in ['time', 'date', 'name', 'bid', 'ask']:
+				continue
+			df[col] = df[col].replace('',0)
+
 		if df is not None:
 
 			if self.open != df['open'].astype('float').values[0]:
@@ -59,12 +66,9 @@ class Realtime():
 					continue
 				df[col] = df[col].astype('float')
 
-			if self.ShareDetail.empty:
+			if not self.pre_get_df.equals(df):
+				self.pre_get_df = df
 				self.ShareDetail = self.ShareDetail.append(df, ignore_index = True)
-			else:
-				tail = self.ShareDetail.tail(1).reset_index(drop = True)
-				if not tail.equals(df):
-					self.ShareDetail = self.ShareDetail.append(df, ignore_index = True)
 
 	def StoreToDB(self):
 		conn = MongoClient()
@@ -92,12 +96,13 @@ if __name__ == '__main__':
 	i = 0
 	while True:
 		t = datetime.datetime.strptime(datetime.datetime.now().strftime('%H:%M:%S'), '%H:%M:%S')
-		if t <= datetime.datetime.strptime("09:25:00", '%H:%M:%S') or \
+		if t <= datetime.datetime.strptime("09:25:04", '%H:%M:%S') or \
 		   t >= datetime.datetime.strptime("15:00:30", '%H:%M:%S'):
 			print t
 			time.sleep(1)
 			continue
 		RT.get()
+		print RT.ShareDetail
 		time.sleep(1)
 		if t >= datetime.datetime.strptime("15:00:20", '%H:%M:%S'):
 			break
