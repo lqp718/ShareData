@@ -44,7 +44,6 @@ class Realtime():
 			df[col] = df[col].replace('',0)
 
 		if df is not None:
-
 			if self.open != df['open'].astype('float').values[0]:
 				self.open = df['open'].astype('float').values[0]
 
@@ -96,13 +95,15 @@ if __name__ == '__main__':
 	i = 0
 	while True:
 		t = datetime.datetime.strptime(datetime.datetime.now().strftime('%H:%M:%S'), '%H:%M:%S')
-		if t <= datetime.datetime.strptime("09:25:04", '%H:%M:%S') or \
+		if t <= datetime.datetime.strptime("09:25:05", '%H:%M:%S') or \
 		   t >= datetime.datetime.strptime("15:00:30", '%H:%M:%S'):
 			print t
 			time.sleep(1)
 			continue
-		RT.get()
-		print RT.ShareDetail
+		try:
+			RT.get()
+		except:
+			pass
 		time.sleep(1)
 		if t >= datetime.datetime.strptime("15:00:20", '%H:%M:%S'):
 			break
