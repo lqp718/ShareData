@@ -8,7 +8,7 @@ import numpy as np
 
 from matplotlib.dates import DateFormatter, WeekdayLocator, DayLocator, MONDAY, date2num
 from matplotlib.finance import candlestick_ohlc
-from pandas import DataFrame as DF
+# from pandas import DataFrame as DF
 
 class StockStrategy():
     def __init__(self, code, start = None, end = None):
@@ -20,9 +20,6 @@ class StockStrategy():
         tmStock.sort_index(ascending=True)
 
         self._stock = tmStock.sort_index(ascending=True)
-        self._s_change = DF()
-        self._s_return = DF()
-        self._s_regime = DF()
 
     def stock_candlestick_ohlc(self, stick = "day", otherseries = None):
         '''
@@ -34,7 +31,7 @@ class StockStrategy():
         '''
         mondays = WeekdayLocator(MONDAY)
         alldays = DayLocator()     
-        dayFormatter = DateFormatter('%d')
+        #dayFormatter = DateFormatter('%d')
 
         transdat = self._stock.loc[:,["open", "high", "low", "close"]]
         if (type(stick) == str):
@@ -103,31 +100,26 @@ class StockStrategy():
 
     def stock_return(self, draw = True):
         '''
-        这个函数用于绘制当前股票的回报率, 并更新self._s_return
+        这个函数用于绘制当前股票的回报率, 并更新self._stock['return']
         return[t,0] = price[t] / price[0],
         可用于分析每只股票在周期开始以来的盈利状况。
         '''
-        if not self._s_return.empty:
-            self._s_return = DF()
-
         s_close = pd.DataFrame({"close": self._stock['close']})
-        self._s_return = s_close.apply(lambda x: x / x[0])
+        self._stock['return'] = s_close.apply(lambda x: x / x[0])
         if draw:
-            self._s_return.plot(grid = True).axhline(y = 1, color = "black", lw = 2)
+            self._stock['return'].plot(grid = True).axhline(y = 1, color = "black", lw = 2)
             plt.show()
 
     def stock_change(self, draw = True):
         '''
-        这个函数用于绘制当前股票每个交易日的变化情况, 并更新self._s_change
+        这个函数用于绘制当前股票每个交易日的变化情况, 并更新self._stock['change']
         change[t] = log(price[t]) - log(price[t-1])
         使用对数差值的好处在于，这种差值可以理解为股价的百分比变化，且不依赖于计算过程中分数的分母。
         '''
-        if not self._s_change.empty:
-            self._s_change = DF()
         s_close = pd.DataFrame({"close": self._stock['close']})
-        self._s_change = s_close.apply(lambda x: np.log(x) - np.log(x.shift(1)))
+        self._stock['change'] = s_close.apply(lambda x: np.log(x) - np.log(x.shift(1)))
         if draw:
-            self._s_change.plot(grid = True).axhline(y = 0, color = "black", lw = 2)
+            self._stock['change'].plot(grid = True).axhline(y = 0, color = "black", lw = 2)
             plt.show()
 
     def stock_average(self, average = [], draw = True):
@@ -147,33 +139,107 @@ class StockStrategy():
                     continue
                 self._stock[ma_sa] = np.round(self._stock["close"].rolling(window = int(sa), center = False).mean(), 2)
 
-        if draw:
-            self.stock_candlestick_ohlc(otherseries = average)
+            if draw:
+                self.stock_candlestick_ohlc(otherseries = average)
 
     def stock_regime(self, a1 = "20", a2 = "50", draw = True):
         '''
-        利用移动均线法判断当前股市状态并绘制股市状态图，同时更新self._s_regime
+        利用移动均线法判断当前股市状态并绘制股市状态图，同时更新self._stock
         其中a1及a2 只能是字串，并且只能包含数字，且a1 < a2
         '''
-        if not self._s_regime.empty:
-            self._s_regime = DF()
-
         self.stock_average(average = [a1, a2], draw = False)
-        self._s_regime["ma%s - ma%s" % (a1,a2)] = self._stock["ma%s" % a1] - self._stock["ma%s" % a2]
-        self._s_regime["Regime"] = np.where(self._s_regime["ma%s - ma%s" % (a1,a2)] > 0, 1, 0)
-        self._s_regime["Regime"] = np.where(self._s_regime["ma%s - ma%s" % (a1,a2)] < 0, -1, self._s_regime["Regime"])
+        self._stock["ma%s - ma%s" % (a1,a2)] = self._stock["ma%s" % a1] - self._stock["ma%s" % a2]
+        self._stock["Regime"] = np.where(self._stock["ma%s - ma%s" % (a1,a2)] > 0, 1, 0)
+        self._stock["Regime"] = np.where(self._stock["ma%s - ma%s" % (a1,a2)] < 0, -1, self._stock["Regime"])
 
         if draw:
-            self._s_regime.plot(grid = True).axhline(y = 0, color = "black", lw = 2)
+            self._stock["Regime"].plot(grid = True).axhline(y = 0, color = "black", lw = 2)
             plt.show()
 
+    def stock_singal(self, a1 = "5", a2 = "20", draw = True):
+        '''
+        根据股市状态绘制买卖信号图，1 代表买入，-1 代表卖出，0代表无操作
+        '''
+        self.stock_regime(a1, a2, draw = False)
+        regime_orig = self._stock.ix[-1, "Regime"]
+        self._stock.ix[-1, "Regime"] = 0
+        self._stock["Signal"] = np.sign(self._stock["Regime"] - self._stock["Regime"].shift(1))
+        self._stock.ix[-1, "Regime"] = regime_orig
+        if draw:
+            self._stock["Signal"].plot(grid = True)
+            plt.show()
+
+    def stock_backtest(self):
+        self.stock_singal(draw = False)
+        stock_signals = pd.concat([
+                pd.DataFrame({"Price": self._stock.loc[self._stock["Signal"] == 1, "close"],
+                             "Regime": self._stock.loc[self._stock["Signal"] == 1, "Regime"],
+                             "Signal": "Buy"}),
+                pd.DataFrame({"Price": self._stock.loc[self._stock["Signal"] == -1, "close"],
+                             "Regime": self._stock.loc[self._stock["Signal"] == -1, "Regime"],
+                             "Signal": "Sell"}),
+            ])
+        stock_signals.sort_index(inplace = True)
+        stock_long_profits = pd.DataFrame({
+                "Price": stock_signals.loc[(stock_signals["Signal"] == "Buy") &
+                                          stock_signals["Regime"] == 1, "Price"],
+                "Profit": pd.Series(stock_signals["Price"] - stock_signals["Price"].shift(1)).loc[
+                    stock_signals.loc[(stock_signals["Signal"].shift(1) == "Buy") & (stock_signals["Regime"].shift(1) == 1)].index
+                ].tolist(),
+                "End Date": stock_signals["Price"].loc[
+                    stock_signals.loc[(stock_signals["Signal"].shift(1) == "Buy") & (stock_signals["Regime"].shift(1) == 1)].index
+                ].index
+            })
+        tradeperiods = pd.DataFrame({"Start": stock_long_profits.index,
+                            "End": stock_long_profits["End Date"]})
+        stock_long_profits["Low"] = tradeperiods.apply(lambda x: min(self._stock.loc[x["Start"]:x["End"], "low"]), axis = 1)
+
+
+        cash = 20000
+        stock_backtest = pd.DataFrame({"Start Port. Value": [],
+                                 "End Port. Value": [],
+                                 "End Date": [],
+                                 "Shares": [],
+                                 "Share Price": [],
+                                 "Trade Value": [],
+                                 "Profit per Share": [],
+                                 "Total Profit": [],
+                                 "Stop-Loss Triggered": []})
+        port_value = .1 
+        batch = 100    
+        stoploss = .2 
+        for index, row in stock_long_profits.iterrows():
+            batches = np.floor(cash * port_value) // np.ceil(batch * row["Price"]) # Maximum number of batches of stocks invested in
+            trade_val = batches * batch * row["Price"] 
+            if row["Low"] < (1 - stoploss) * row["Price"]:   # Account for the stop-loss
+                share_profit = np.round((1 - stoploss) * row["Price"], 2)
+                stop_trig = True
+            else:
+                share_profit = row["Profit"]
+                stop_trig = False
+            profit = share_profit + batches * batch 
+
+            stock_backtest = stock_backtest.append(pd.DataFrame({
+                        "Start Port. Value": cash,
+                        "End Port. Value": cash + profit,
+                        "End Date": row["End Date"],
+                        "Shares": batch * batches,
+                        "Share Price": row["Price"],
+                        "Trade Value": trade_val,
+                        "Profit per Share": share_profit,
+                        "Total Profit": profit,
+                        "Stop-Loss Triggered": stop_trig
+                    }, index = [index]))
+            cash = max(0, cash + profit)
+        stock_backtest["End Port. Value"].plot()
+        plt.show()
 
 # test code>>>
 if __name__ == '__main__':
     sStrategy = StockStrategy("600050", "2015-01-05")
-    # sStrategy.stock_candlestick_ohlc()
-    # sStrategy.stock_return()
-    # sStrategy.stock_change()
-    sStrategy.stock_average(["5","50", "100"], draw = False)
-    sStrategy.stock_regime()
+    # # sStrategy.stock_candlestick_ohlc()
+    # # sStrategy.stock_return()
+    # # sStrategy.stock_change()
+    # sStrategy.stock_average(["5","50", "100"], draw = False)
+    sStrategy.stock_backtest()
 # test code<<<
