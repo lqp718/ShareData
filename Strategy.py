@@ -194,7 +194,6 @@ class StockStrategy():
                             "End": stock_long_profits["End Date"]})
         stock_long_profits["Low"] = tradeperiods.apply(lambda x: min(self._stock.loc[x["Start"]:x["End"], "low"]), axis = 1)
 
-
         cash = 20000
         stock_backtest = pd.DataFrame({"Start Port. Value": [],
                                  "End Port. Value": [],
@@ -205,19 +204,20 @@ class StockStrategy():
                                  "Profit per Share": [],
                                  "Total Profit": [],
                                  "Stop-Loss Triggered": []})
-        port_value = .1 
-        batch = 100    
-        stoploss = .2 
+        port_value = .5 # 每次交易控制在总成本的50%
+        batch = 100    # 一手股票为100股
+        stoploss = .1 # 止损系数当当前交易最低价格低于买入价格的90% 的时候终止交易
         for index, row in stock_long_profits.iterrows():
-            batches = np.floor(cash * port_value) // np.ceil(batch * row["Price"]) # Maximum number of batches of stocks invested in
-            trade_val = batches * batch * row["Price"] 
-            if row["Low"] < (1 - stoploss) * row["Price"]:   # Account for the stop-loss
-                share_profit = np.round((1 - stoploss) * row["Price"], 2)
+            batches = np.floor(cash * port_value) // np.ceil(batch * row["Price"]) # batches 代表当次交易所能购买的最多手数
+            trade_val = batches * batch * row["Price"] #当前交易的总金额
+            if row["Low"] < (1 - stoploss) * row["Price"]:   # 如果当前的最低价格已经低于买入价格的80%则终止当前交易
+                share_profit = np.round((1 - stoploss) * row["Price"], 2) # share_profit 代表每股收益
                 stop_trig = True
             else:
                 share_profit = row["Profit"]
                 stop_trig = False
-            profit = share_profit + batches * batch 
+            print share_profit
+            profit = share_profit * batches * batch
 
             stock_backtest = stock_backtest.append(pd.DataFrame({
                         "Start Port. Value": cash,
@@ -240,6 +240,8 @@ if __name__ == '__main__':
     # # sStrategy.stock_candlestick_ohlc()
     # # sStrategy.stock_return()
     # # sStrategy.stock_change()
-    # sStrategy.stock_average(["5","50", "100"], draw = False)
+    sStrategy.stock_singal(draw = False)
+    # print sStrategy._stock.loc[:, ["close", "low", "ma5", "ma20", "Regime", "Signal"]].to_json(orient = "index")
+    sStrategy.stock_candlestick_ohlc(otherseries = ["ma5", "ma20", "Regime", "Signal"])
     sStrategy.stock_backtest()
 # test code<<<
