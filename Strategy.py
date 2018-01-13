@@ -163,6 +163,9 @@ class StockStrategy():
         self.stock_regime(a1, a2, draw = False)
         regime_orig = self._stock.ix[-1, "Regime"]
         self._stock.ix[-1, "Regime"] = 0
+        #
+        # 用当前日期的Regime 减去前一天的Regime，结果大于零则代表当前是a1均线上穿a2均线，为牛市行情，反之为熊市行情
+        #
         self._stock["Signal"] = np.sign(self._stock["Regime"] - self._stock["Regime"].shift(1))
         self._stock.ix[-1, "Regime"] = regime_orig
         if draw:
@@ -171,7 +174,7 @@ class StockStrategy():
 
     def stock_backtest(self):
         self.stock_singal(draw = False)
-        stock_signals = pd.concat([
+        stock_signals_tmp = pd.concat([
                 pd.DataFrame({"Price": self._stock.loc[self._stock["Signal"] == 1, "close"],
                              "Regime": self._stock.loc[self._stock["Signal"] == 1, "Regime"],
                              "Signal": "Buy"}),
@@ -179,7 +182,16 @@ class StockStrategy():
                              "Regime": self._stock.loc[self._stock["Signal"] == -1, "Regime"],
                              "Signal": "Sell"}),
             ])
-        stock_signals.sort_index(inplace = True)
+        stock_signals_tmp.sort_index(inplace = True)
+
+        #
+        # 为了完成一个完整周期的数据回测，最后一笔交易一定是卖出交易，多疑所以当判断出最后一行是买入交易时，应将最后一行数据移除
+        #
+        if stock_signals_tmp.ix[-1,"Signal"] == "Buy":
+            stock_signals = stock_signals_tmp.ix[:-1]
+        else:
+            stock_signals = stock_signals_tmp
+
         stock_long_profits = pd.DataFrame({
                 "Price": stock_signals.loc[(stock_signals["Signal"] == "Buy") &
                                           stock_signals["Regime"] == 1, "Price"],
@@ -205,13 +217,14 @@ class StockStrategy():
                                  "Total Profit": [],
                                  "Stop-Loss Triggered": []})
         port_value = .5 # 每次交易控制在总成本的50%
-        batch = 100    # 一手股票为100股
-        stoploss = .1 # 止损系数当当前交易最低价格低于买入价格的90% 的时候终止交易
+        batch = 100     # 一手股票为100股
+        stoploss = .1   # 止损系数当当前交易最低价格低于买入价格的90% 的时候终止交易
         for index, row in stock_long_profits.iterrows():
             batches = np.floor(cash * port_value) // np.ceil(batch * row["Price"]) # batches 代表当次交易所能购买的最多手数
             trade_val = batches * batch * row["Price"] #当前交易的总金额
             if row["Low"] < (1 - stoploss) * row["Price"]:   # 如果当前的最低价格已经低于买入价格的80%则终止当前交易
-                share_profit = np.round((1 - stoploss) * row["Price"], 2) # share_profit 代表每股收益
+                # share_profit 代表每股收益, 当达到止损条件时(即当前交易时段股票最低价格已经低于买入价格的90%) 卖出股票，所以此时每股收益为负值
+                share_profit = np.round((1 - stoploss) * row["Price"], 2) - row["Price"]
                 stop_trig = True
             else:
                 share_profit = row["Profit"]
