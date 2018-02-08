@@ -142,7 +142,7 @@ class StockStrategy():
             if draw:
                 self.stock_candlestick_ohlc(otherseries = average)
 
-    def stock_regime(self, a1 = "20", a2 = "50", draw = True):
+    def stock_regime(self, a1 = "5", a2 = "20", draw = True):
         '''
         利用移动均线法判断当前股市状态并绘制股市状态图，同时更新self._stock
         其中a1及a2 只能是字串，并且只能包含数字，且a1 < a2
@@ -185,7 +185,7 @@ class StockStrategy():
         stock_signals_tmp.sort_index(inplace = True)
 
         #
-        # 为了完成一个完整周期的数据回测，最后一笔交易一定是卖出交易，多疑所以当判断出最后一行是买入交易时，应将最后一行数据移除
+        # 为了完成一个完整周期的数据回测，最后一笔交易一定是卖出交易，所以当判断出最后一行是买入交易时，应将最后一行数据移除
         #
         if stock_signals_tmp.ix[-1,"Signal"] == "Buy":
             stock_signals = stock_signals_tmp.ix[:-1]
@@ -193,11 +193,14 @@ class StockStrategy():
             stock_signals = stock_signals_tmp
 
         stock_long_profits = pd.DataFrame({
+                # Price 代表每次交易的买入价格
                 "Price": stock_signals.loc[(stock_signals["Signal"] == "Buy") &
                                           stock_signals["Regime"] == 1, "Price"],
+                # Profit 代表卖出股票时每股股票的盈利值（即卖出价格-买入价格）
                 "Profit": pd.Series(stock_signals["Price"] - stock_signals["Price"].shift(1)).loc[
                     stock_signals.loc[(stock_signals["Signal"].shift(1) == "Buy") & (stock_signals["Regime"].shift(1) == 1)].index
                 ].tolist(),
+                # End Date 代表卖出股票的日期
                 "End Date": stock_signals["Price"].loc[
                     stock_signals.loc[(stock_signals["Signal"].shift(1) == "Buy") & (stock_signals["Regime"].shift(1) == 1)].index
                 ].index
@@ -206,7 +209,7 @@ class StockStrategy():
                             "End": stock_long_profits["End Date"]})
         stock_long_profits["Low"] = tradeperiods.apply(lambda x: min(self._stock.loc[x["Start"]:x["End"], "low"]), axis = 1)
 
-        cash = 20000
+        cash = 100000
         stock_backtest = pd.DataFrame({"Start Port. Value": [],
                                  "End Port. Value": [],
                                  "End Date": [],
