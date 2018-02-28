@@ -12,18 +12,23 @@ class DB():
 		return self.Collection.insert_one(_dic)
 
 	def find(self, _filter, _projection = {'_id': False}, _sort = None):
-		return self.Collection.find(filter = _filter, projection = _projection, sort = _sort)
+		i = 0
+		result = []
+		for item in self.Collection.find(filter = _filter, projection = _projection, sort = _sort):
+			result.append(item)
+			i += 1
+		return i, result
 
-	def update(self, _filter, _update):
-		return self.Collection.update_one(filter = _filter, update = _update)
+	def update(self, _filter, _update, _upsert = False):
+		return self.Collection.update_one(filter = _filter, update = _update, upsert = _upsert)
 
 	def logout(self):
 		self.db.logout()
 
 # Test code>>>
 if __name__ == '__main__':
-	database = DB("MyShare", "600050")
-	print database.Collection.count()
-	for item in database.find(_filter = {'date' : {"$lte": "2015-01-07", "$gte": "2015-01-06"}}):
-		print item["date"]
+	database = DB("MyShare", "601901")
+	import datetime
+	date = datetime.datetime.strptime("2016-01-18", "%Y-%m-%d")
+	print database.find(_filter = {'date' : {"$lt": date}})
 # Test code<<<

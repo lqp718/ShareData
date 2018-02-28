@@ -6,14 +6,96 @@ import time
 import random
 import logging
 import json
-import os
 
 from bson.objectid import ObjectId
-from pymongo import MongoClient
 from error import trace_log
+from Database import DB
 
+class ShareDB():
+	def __init__(self, sharecode = None, startdate = None):
+		self.ShareCode = sharecode
+		self.StartDate = startdate
+		self.ShareDB = DB(db = "MyShare", col = sharecode)
+		self.RecordDB = DB(db = "MyShare", col = "LastRecord")
+
+	def GetHistoryData(self):
+		delta = datetime.timedelta(days=1)
+
+		Share_dic = {
+		"_id": None,
+		"date": None,
+		"k_data": None,
+		"tick": None
+		}
+
+		Record_dic = {
+			"code": self.ShareCode,
+			"date": None,
+		}
+
+		i = 0
+		count = 0
+		try:
+			count, result = self.RecordDB.find(_filter = {"code": self.ShareCode})
+			if count != 0:
+				date = result[0]["date"] + delta
+			else:
+				date = datetime.datetime.strptime(self.StartDate, "%Y-%m-%d")
+				#
+				# Don't have the record data create one
+				#
+				Record_dic['date'] = date
+				self.RecordDB.insert_one(Record_dic)
+		except:
+			date = datetime.datetime.strptime(self.StartDate, "%Y-%m-%d")
+
+		
+
+		while True:
+			t = random.uniform(1, 5)
+			try:
+				Share_dic['date'] = date
+				logging.debug(Share_dic['date'])
+				df = ts.get_hist_data(cfg.ShareCode, start=date.strftime("%Y-%m-%d"), end=date.strftime("%Y-%m-%d"))
+				if df is not None and len(df) != 0:
+					Share_dic['_id'] = ObjectId()
+					Share_dic['k_data'] = json.loads(df.to_json(orient = "records"))[0]
+					df = ts.get_tick_data(cfg.ShareCode, date=date.strftime("%Y-%m-%d"), retry_count=10, pause=4)
+					if len(df) > 3: # src = "sn"
+						SortDf = df.sort_values(by = 'time', axis = 0, ascending = True)#.sort_index(ascending=False,inplace=False)
+						SortDf.reset_index(drop = True, inplace = True)
+						SortDf['type'] = SortDf['type'].replace("买盘", 1).replace("卖盘", -1).replace("中性盘", 0)
+						SortDf['change'] = SortDf['change'].replace('--', '0').astype('float')
+						Share_dic['tick'] = json.loads(SortDf.to_json(orient = "index"))
+						InsertResult = self.ShareDB.insert_one(Share_dic)
+						if InsertResult.acknowledged:
+							self.RecordDB.update(_filter = {"code": self.ShareCode}, _update = {"$set": {"date": date}})
+							logging.debug("Insert data successful ObjectId = %s" %(InsertResult.inserted_id))
+						else:
+							logging.debug("Insert data fail")
+						
+				else:
+					self.RecordDB.update(_filter = {"code": self.ShareCode}, _update = {"$set": {"date": date}})
+					logging.debug("No k_data, pass")
+
+				if date.strftime("%Y-%m-%d") == datetime.datetime.now().strftime('%Y-%m-%d'):
+					break
+				time.sleep(t)
+				date = date + delta
+				i = i + 1
+				if i == 10:
+					i = 0
+					time.sleep(10)
+			except:
+				logging.error("Exception!!!")
+				trace_log()
+				time.sleep(t)
+				date = date + delta
+		self.ShareDB.logout()
+		self.RecordDB.logout()
+
+#Test code >>>
 if __name__ == '__main__':
-
 	log_file = "ShareDB.log"
 	logging.basicConfig(
         level=logging.DEBUG,
@@ -24,72 +106,6 @@ if __name__ == '__main__':
 	console_logger.setFormatter(logging.Formatter("%(message)s"))
 	logging.getLogger().addHandler(console_logger)
 
-	delta = datetime.timedelta(days=1)
-	try:
-		if os.path.exists("lastSuccess.txt"):
-			with open("lastSuccess.txt", 'r') as f:
-				StartDate = f.read().replace(' ', '')
-			date = datetime.datetime.strptime(StartDate, "%Y-%m-%d") + delta
-		else:
-			date = datetime.datetime.strptime(cfg.StartDate, "%Y-%m-%d")
-	except:
-		date = datetime.datetime.strptime(cfg.StartDate, "%Y-%m-%d")
-
-	i = 0
-
-	dic = {
-	"_id": None,
-	"date": None,
-	"k_data": None,
-	"tick": None
-	}
-
-	conn = MongoClient()
-	db = conn.MyShare
-	Collection = db.get_collection(name = cfg.ShareCode)
-	if Collection is None:
-		Collection = db.create_collection(name = cfg.ShareCode)
-
-	while True:
-		t = random.uniform(1, 5)
-		try:
-			dic['date'] = date
-			logging.debug(dic['date'])
-			df = ts.get_hist_data(cfg.ShareCode, start=date.strftime("%Y-%m-%d"), end=date.strftime("%Y-%m-%d"))
-			if df is not None and len(df) != 0:
-				dic['_id'] = ObjectId()
-				dic['k_data'] = json.loads(df.to_json(orient = "records"))[0]
-				df = ts.get_tick_data(cfg.ShareCode, date=date.strftime("%Y-%m-%d"), retry_count=10, pause=4)
-				if len(df) > 3: # src = "sn"
-					SortDf = df.sort_values(by = 'time', axis = 0, ascending = True)#.sort_index(ascending=False,inplace=False)
-					SortDf.reset_index(drop = True, inplace = True)
-					SortDf['type'] = SortDf['type'].replace("买盘", 1).replace("卖盘", -1).replace("中性盘", 0)
-					SortDf['change'] = SortDf['change'].replace('--', '0').astype('float')
-					dic['tick'] = json.loads(SortDf.to_json(orient = "index"))
-					InsertResult = Collection.insert_one(dic)
-					if InsertResult.acknowledged:
-						with open("lastSuccess.txt", "w") as f:
-							f.write(date.strftime("%Y-%m-%d"))
-						logging.debug("Insert data successful ObjectId = %s" %(InsertResult.inserted_id))
-					else:
-						logging.debug("Insert data fail")
-					
-			else:
-				with open("lastSuccess.txt", "w") as f:
-					f.write(date.strftime("%Y-%m-%d"))
-				logging.debug("No k_data, pass")
-
-			if date.strftime("%Y-%m-%d") == datetime.datetime.now().strftime('%Y-%m-%d'):
-				break
-			time.sleep(t)
-			date = date + delta
-			i = i + 1
-			if i == 10:
-				i = 0
-				time.sleep(10)
-		except:
-			logging.error("Exception!!!")
-			trace_log()
-			time.sleep(t)
-			date = date + delta
-	db.logout()
+	Share = ShareDB(sharecode = "601901", startdate = "2016-01-13")
+	Share.GetHistoryData()
+#Test code<<<
