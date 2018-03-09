@@ -13,6 +13,7 @@ from Database import DB
 
 class ShareDB():
 	def __init__(self, sharecode = None, startdate = None):
+		self.StopCollect = False
 		self.ShareCode = sharecode
 		self.StartDate = startdate
 		self.ShareDB = DB(db = "MyShare", col = sharecode)
@@ -51,7 +52,7 @@ class ShareDB():
 
 		
 
-		while True:
+		while not self.StopCollect:
 			t = random.uniform(1, 5)
 			try:
 				Share_dic['date'] = date
@@ -91,8 +92,10 @@ class ShareDB():
 				trace_log()
 				time.sleep(t)
 				date = date + delta
+			# logging.info("self.StopCollect: %s" % (self.StopCollect))
 		self.ShareDB.logout()
 		self.RecordDB.logout()
+
 
 #Test code >>>
 if __name__ == '__main__':
