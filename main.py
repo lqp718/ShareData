@@ -8,6 +8,7 @@ import time
 from error import trace_log
 from Strategy import StockStrategy
 from ShareDB import ShareDB
+from RealtimeDB import Realtime
 
 def is_valid_date(str):
 	try:
@@ -21,10 +22,11 @@ class Frame1(wx.Frame):
         wx.Frame.__init__(self, parent=parent, style = wx.CAPTION | wx.SIMPLE_BORDER | wx.MINIMIZE_BOX | wx.CLOSE_BOX, \
             title='TuShare Strategy system',size=(1380,800))
         # self.SetMaxSize((1380,800))
-        self.thread = None
-        self.alive = threading.Event()
-
-        self.share = None
+        self.thread = {
+                    # "target" = function_thread,
+                    # "target_stop_control" = stop_function
+                    }
+        self.alive = {}
 
         # 窗口布局，左右布局
         self.spW = wx.SplitterWindow(self, size = self.Size)
@@ -35,7 +37,7 @@ class Frame1(wx.Frame):
 
         # 数据收集交互框 >>>
         # 历史数据
-        self.ShareDBbox = wx.RadioBox(self.panel, label='数据收集',pos=(30, 20), size=(550, 80), majorDimension=1, style=wx.RA_SPECIFY_ROWS)
+        self.ShareDBbox = wx.RadioBox(self.panel, label='历史数据收集',pos=(30, 20), size=(550, 80), majorDimension=1, style=wx.RA_SPECIFY_ROWS)
         wx.StaticText(self.ShareDBbox, label = '输入股票代码:', pos=(30, 20), size=(100, 25))
         self.ShareCodeText = wx.TextCtrl(self.ShareDBbox, value = "600050", pos=(30, 45), size=(100, 25))
 
@@ -62,11 +64,15 @@ class Frame1(wx.Frame):
 
         # 系统日志显示 >>>
         self.LogText = wx.TextCtrl(self.notebookLog, style=wx.TE_MULTILINE | wx.TE_READONLY, size=self.notebookLog.Size)
+        self.RealTimeText = wx.TextCtrl(self.notebookLog, style=wx.TE_MULTILINE | wx.TE_READONLY, size=self.notebookLog.Size)
         self.notebookLog.AddPage(self.LogText, "系统日志:",True)
+        self.notebookLog.AddPage(self.RealTimeText, "实时数据:",False)
         # 系统日志显示 <<<
 
         self.btnShareDB.Bind(wx.EVT_BUTTON,	self.CollectShareData)
         self.btnShareDBStop.Bind(wx.EVT_BUTTON, self.StopCollectShareData)
+        self.btnShareRealTime.Bind(wx.EVT_BUTTON, self.CollectRealTimeData)
+        self.btnShareRealTimeStop.Bind(wx.EVT_BUTTON, self.StopCollectRealTimeData)
 
         self.__attach_events()
         self.Bind(wx.EVT_CLOSE, self.OnClose)
@@ -74,6 +80,9 @@ class Frame1(wx.Frame):
     def __attach_events(self):
     	self.Bind(wx.EVT_CLOSE, self.OnClose)
 
+    #
+    # Collect Share data >>>
+    #
     def CollectShareData(self,event):
         ShareCode = self.ShareCodeText.GetValue().replace(' ','')
         StartDate = self.StartDateText.GetValue().replace(' ','')
@@ -86,49 +95,81 @@ class Frame1(wx.Frame):
             return 0
 
         try:
-            self.share = ShareDB(sharecode = ShareCode, startdate = StartDate)
+            share = ShareDB(sharecode = ShareCode, startdate = StartDate)
             wx.LogMessage("开始收集数据...")
             # self.share.StopCollect = False
-            self.StartThread(self.share.GetHistoryData)
+            self.StartThread(stop_control = share.stop, key = "ShareDB", target = share.GetHistoryData)
         except:
             trace_log()
 
 
     def StopCollectShareData(self, event):
-        self.StopThread()
+        self.StopThread("ShareDB")
+
+    #
+    # Collect share data <<<
+    # Collect real time share data >>>
+    #
+    def CollectRealTimeData(self, event):
+        ShareCode = self.ShareCodeRealTimeText.GetValue().replace(' ','')
+        print ShareCode
+        RT = Realtime(sharecode = ShareCode, output = self.RealTimeText)
+        self.StartThread(stop_control = RT.stop, key = "RealTimeData", target = RT.GetRealTimeData)
+
+    def StopCollectRealTimeData(self, event):
+        self.StopThread("RealTimeData")
+    #
+    # Collect real time share data <<<
+    #
 
     def PopupMessage(self, message = ""):
         self.msg1 = wx.MessageDialog(parent=None, message=message, caption="提示消息",  
                                      style=wx.OK | wx.ICON_INFORMATION)
         self.msg1.ShowModal()
 
+    def StartThread(self, stop_control, key, target):
+        """Start the receiver thread"""
+        if key in self.thread.keys() and self.thread[key] is not None:
+            wx.LogMessage("This jod is already started, please stop the pre-job and try again")
+            return 0
+        self.thread[key] = threading.Thread(target=target)
+        self.thread[key + "_stop_control"] = stop_control
+        self.thread[key].setDaemon(True)
+        self.alive[key] = threading.Event()
+        self.alive[key].set()
+        self.thread[key].start()
+
+    def StopThread(self, key = None):
+        if key in self.thread.keys():
+            if self.thread[key] is not None:
+                self.thread[key + "_stop_control"]()
+                wx.LogMessage("StopThread")
+                self.alive[key].clear()
+                self.thread[key].join()
+                wx.LogMessage("StopThread stopped")
+                self.thread[key] = None
+        elif key is None:
+            for key in self.thread.keys():
+                if key.endswith("_stop_control"):
+                    continue
+                if self.thread[key] is None:
+                    continue
+                self.thread[key + "_stop_control"]()
+                wx.LogMessage("StopThread")
+                self.alive[key].clear()
+                self.thread[key].join()
+                wx.LogMessage("StopThread stopped")
+                self.thread[key] = None
+
+    #
+    # write method for logging module support
+    #
     def write(self, s):
         wx.LogMessage(s.replace("\n", ""))
 
-    def StartThread(self, target):
-        """Start the receiver thread"""
-        self.thread = threading.Thread(target=target)
-        self.thread.setDaemon(True)
-        self.alive.set()
-        self.thread.start()
-
-    def StopThread(self):
-        #logging.shutdown()
-        if self.thread is not None:
-            self.share.StopCollect = True
-            wx.LogMessage("StopThread")
-            self.alive.clear()
-            self.thread.join()
-            wx.LogMessage("StopThread stopped")
-            self.thread = None
-
     def OnClose(self, event):
         self.StopThread()
-        if self.thread is not None:
-            if self.thread._Thread__stopped:
-                self.Destroy()
-        else:
-            self.Destroy()
+        self.Destroy()
 
     def OnFrameSize(self, event):
         size = event.Size
@@ -149,6 +190,7 @@ if __name__ == '__main__':
     console_logger.setLevel(logging.DEBUG)
     console_logger.setFormatter(logging.Formatter("%(message)s"))
     logging.getLogger().addHandler(console_logger)
+
     frame.Show()
     app.MainLoop()
 

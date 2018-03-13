@@ -19,6 +19,9 @@ class ShareDB():
 		self.ShareDB = DB(db = "MyShare", col = sharecode)
 		self.RecordDB = DB(db = "MyShare", col = "LastRecord")
 
+	def stop(self):
+		self.StopCollect = True
+
 	def GetHistoryData(self):
 		delta = datetime.timedelta(days=1)
 

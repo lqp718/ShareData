@@ -11,7 +11,7 @@ class DB():
 	def insert_one(self, _dic):
 		return self.Collection.insert_one(_dic)
 
-	def find(self, _filter, _projection = {'_id': False}, _sort = None):
+	def find(self, _filter = None, _projection = {'_id': False}, _sort = None):
 		i = 0
 		result = []
 		for item in self.Collection.find(filter = _filter, projection = _projection, sort = _sort):

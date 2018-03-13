@@ -6,6 +6,7 @@ import tushare as ts
 import pandas as pd
 import numpy as np
 
+from Database import DB
 from matplotlib.dates import DateFormatter, WeekdayLocator, DayLocator, MONDAY, date2num
 from matplotlib.finance import candlestick_ohlc
 # from pandas import DataFrame as DF
@@ -19,6 +20,7 @@ class StockStrategy():
         tmStock = tmStock.reindex(idx)
         tmStock.sort_index(ascending=True)
 
+        self._code = code
         self._stock = tmStock.sort_index(ascending=True)
 
     def stock_candlestick_ohlc(self, stick = "day", otherseries = None):
@@ -250,14 +252,22 @@ class StockStrategy():
         stock_backtest["End Port. Value"].plot()
         plt.show()
 
+    def GetShareData(self):
+        ShareDB = DB(db = "MyShare", col = self._code)
+        i, result = ShareDB.find()
+        if i != 0:
+            print result
+
+
 # test code>>>
 if __name__ == '__main__':
     sStrategy = StockStrategy("600050", "2015-01-05")
+    sStrategy.GetShareData()
     # # sStrategy.stock_candlestick_ohlc()
     # # sStrategy.stock_return()
     # # sStrategy.stock_change()
-    sStrategy.stock_singal(draw = False)
-    # print sStrategy._stock.loc[:, ["close", "low", "ma5", "ma20", "Regime", "Signal"]].to_json(orient = "index")
-    sStrategy.stock_candlestick_ohlc(otherseries = ["ma5", "ma20", "Regime", "Signal"])
-    sStrategy.stock_backtest()
+    # sStrategy.stock_singal(draw = False)
+    # # print sStrategy._stock.loc[:, ["close", "low", "ma5", "ma20", "Regime", "Signal"]].to_json(orient = "index")
+    # sStrategy.stock_candlestick_ohlc(otherseries = ["ma5", "ma20", "Regime", "Signal"])
+    # sStrategy.stock_backtest()
 # test code<<<
