@@ -65,7 +65,9 @@ class Frame1(wx.Frame):
         # 系统日志显示 >>>
         self.LogText = wx.TextCtrl(self.notebookLog, style=wx.TE_MULTILINE | wx.TE_READONLY, size=self.notebookLog.Size)
         self.RealTimeText = wx.TextCtrl(self.notebookLog, style=wx.TE_MULTILINE | wx.TE_READONLY, size=self.notebookLog.Size)
+        self.ShareDBText = wx.TextCtrl(self.notebookLog, style=wx.TE_MULTILINE | wx.TE_READONLY, size=self.notebookLog.Size)
         self.notebookLog.AddPage(self.LogText, "系统日志:",True)
+        self.notebookLog.AddPage(self.ShareDBText, "历史数据:",False)
         self.notebookLog.AddPage(self.RealTimeText, "实时数据:",False)
         # 系统日志显示 <<<
 
@@ -95,10 +97,10 @@ class Frame1(wx.Frame):
             return 0
 
         try:
-            share = ShareDB(sharecode = ShareCode, startdate = StartDate)
+            share = ShareDB(sharecode = ShareCode, startdate = StartDate, output = self.ShareDBText)
             wx.LogMessage("开始收集数据...")
             # self.share.StopCollect = False
-            self.StartThread(stop_control = share.stop, key = "ShareDB", target = share.GetHistoryData)
+            self.StartThread(key = "ShareDB", target = share.GetHistoryData)
         except:
             trace_log()
 
@@ -114,7 +116,7 @@ class Frame1(wx.Frame):
         ShareCode = self.ShareCodeRealTimeText.GetValue().replace(' ','')
         print ShareCode
         RT = Realtime(sharecode = ShareCode, output = self.RealTimeText)
-        self.StartThread(stop_control = RT.stop, key = "RealTimeData", target = RT.GetRealTimeData)
+        self.StartThread(key = "RealTimeData", target = RT.GetRealTimeData)
 
     def StopCollectRealTimeData(self, event):
         self.StopThread("RealTimeData")
@@ -127,45 +129,40 @@ class Frame1(wx.Frame):
                                      style=wx.OK | wx.ICON_INFORMATION)
         self.msg1.ShowModal()
 
-    def StartThread(self, stop_control, key, target):
+    def StartThread(self, key, target):
         """Start the receiver thread"""
         if key in self.thread.keys() and self.thread[key] is not None:
             wx.LogMessage("This jod is already started, please stop the pre-job and try again")
             return 0
-        self.thread[key] = threading.Thread(target=target)
-        self.thread[key + "_stop_control"] = stop_control
-        self.thread[key].setDaemon(True)
         self.alive[key] = threading.Event()
+        self.thread[key] = threading.Thread(target=target, args=(self.alive[key],))
+        self.thread[key].setDaemon(True)
         self.alive[key].set()
         self.thread[key].start()
 
     def StopThread(self, key = None):
         if key in self.thread.keys():
             if self.thread[key] is not None:
-                self.thread[key + "_stop_control"]()
                 wx.LogMessage("StopThread")
                 self.alive[key].clear()
-                self.thread[key].join()
-                wx.LogMessage("StopThread stopped")
+                self.thread[key].join(1)
                 self.thread[key] = None
+                wx.LogMessage("StopThread stopped")
         elif key is None:
             for key in self.thread.keys():
-                if key.endswith("_stop_control"):
-                    continue
                 if self.thread[key] is None:
                     continue
-                self.thread[key + "_stop_control"]()
                 wx.LogMessage("StopThread")
                 self.alive[key].clear()
-                self.thread[key].join()
-                wx.LogMessage("StopThread stopped")
+                self.thread[key].join(1)
                 self.thread[key] = None
+                wx.LogMessage("StopThread stopped")
 
     #
     # write method for logging module support
     #
-    def write(self, s):
-        wx.LogMessage(s.replace("\n", ""))
+    # def write(self, s):
+    #     wx.LogMessage(s.replace("\n", ""))
 
     def OnClose(self, event):
         self.StopThread()
@@ -183,13 +180,15 @@ if __name__ == '__main__':
     logging.basicConfig(
         level=logging.DEBUG,
         format="%(message)s",
-        #filename = log_file,
-        stream=frame)
-    wx.Log.SetActiveTarget(wx.LogTextCtrl(frame.LogText))
+        filename = log_file,
+        #stream=frame
+        )
     console_logger = logging.StreamHandler()
     console_logger.setLevel(logging.DEBUG)
     console_logger.setFormatter(logging.Formatter("%(message)s"))
     logging.getLogger().addHandler(console_logger)
+
+    wx.Log.SetActiveTarget(wx.LogTextCtrl(frame.LogText))
 
     frame.Show()
     app.MainLoop()

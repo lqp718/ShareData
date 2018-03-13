@@ -256,7 +256,7 @@ class StockStrategy():
         ShareDB = DB(db = "MyShare", col = self._code)
         i, result = ShareDB.find()
         if i != 0:
-            print result
+            print i
 
 
 # test code>>>

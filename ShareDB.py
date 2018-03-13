@@ -12,17 +12,32 @@ from error import trace_log
 from Database import DB
 
 class ShareDB():
-	def __init__(self, sharecode = None, startdate = None):
-		self.StopCollect = False
+	def __init__(self, sharecode = None, startdate = None, output = None):
+		self.Output = output
+		self.StopOutput = False
 		self.ShareCode = sharecode
 		self.StartDate = startdate
 		self.ShareDB = DB(db = "MyShare", col = sharecode)
 		self.RecordDB = DB(db = "MyShare", col = "LastRecord")
 
-	def stop(self):
-		self.StopCollect = True
+	def OutputText(self, s):
+		if self.StopOutput:
+			return 0
+		if self.Output is not None:
+			self.Output.AppendText(s)
 
-	def GetHistoryData(self):
+	def stop(self, event):
+		if event is None:
+			return False
+		else:
+			if event.isSet():
+				return False
+			else:
+				self.StopOutput = True
+				return True
+
+
+	def GetHistoryData(self, event = None):
 		delta = datetime.timedelta(days=1)
 
 		Share_dic = {
@@ -55,11 +70,12 @@ class ShareDB():
 
 		
 
-		while not self.StopCollect:
+		while not self.stop(event):
 			t = random.uniform(1, 5)
 			try:
 				Share_dic['date'] = date
 				logging.debug(Share_dic['date'])
+				self.OutputText("Collecting Share data for" + Share_dic['date'].strftime("%Y-%m-%d") + "\n")
 				df = ts.get_hist_data(cfg.ShareCode, start=date.strftime("%Y-%m-%d"), end=date.strftime("%Y-%m-%d"))
 				if df is not None and len(df) != 0:
 					Share_dic['_id'] = ObjectId()
@@ -75,12 +91,14 @@ class ShareDB():
 						if InsertResult.acknowledged:
 							self.RecordDB.update(_filter = {"code": self.ShareCode}, _update = {"$set": {"date": date}})
 							logging.debug("Insert data successful ObjectId = %s" %(InsertResult.inserted_id))
+							self.OutputText("Collect data successful and insert to database ObjectId = %s" %(InsertResult.inserted_id) + "\n")
 						else:
 							logging.debug("Insert data fail")
 						
 				else:
 					self.RecordDB.update(_filter = {"code": self.ShareCode}, _update = {"$set": {"date": date}})
 					logging.debug("No k_data, pass")
+					self.OutputText("No k_data, pass" + "\n")
 
 				if date.strftime("%Y-%m-%d") == datetime.datetime.now().strftime('%Y-%m-%d'):
 					break

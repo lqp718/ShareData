@@ -41,8 +41,14 @@ class Realtime():
 	def __del__(self):
 		pass
 
-	def stop(self):
-		self.StopCollect = True
+	def stop(self, event):
+		if event is None:
+			return False
+		else:
+			if event.isSet():
+				return False
+			else:
+				return True
 
 	def get(self):
 		df = ts.get_realtime_quotes(self.sharecode)
@@ -79,12 +85,12 @@ class Realtime():
 				return df
 		return None
 
-	def GetRealTimeData(self):
+	def GetRealTimeData(self, event = None):
 		today = datetime.datetime.now().strftime('%Y-%m-%d')
 		if ts.is_holiday(today):
 			logging.debug("Today is not trading day, please execute this function during the share trading day")
 			return 0
-		while not self.StopCollect:
+		while not self.stop(event):
 			t = datetime.datetime.strptime(datetime.datetime.now().strftime('%H:%M:%S'), '%H:%M:%S')
 			if t <= datetime.datetime.strptime("09:25:05", '%H:%M:%S') or \
 			   t >= datetime.datetime.strptime("15:00:30", '%H:%M:%S'):
