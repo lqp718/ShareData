@@ -4,6 +4,7 @@ import wx
 import logging
 import threading
 import time
+import datetime
 
 from error import trace_log
 from Strategy import StockStrategy
@@ -24,7 +25,6 @@ class Frame1(wx.Frame):
         # self.SetMaxSize((1380,800))
         self.thread = {
                     # "target" = function_thread,
-                    # "target_stop_control" = stop_function
                     }
         self.alive = {}
 
@@ -51,7 +51,7 @@ class Frame1(wx.Frame):
         self.ShareRealtimebox = wx.RadioBox(self.panel, label='实时数据收集',pos=(30, 120), size=(550, 100), majorDimension=1, style=wx.RA_SPECIFY_ROWS)
         wx.StaticText(self.ShareRealtimebox, label = '输入股票代码:', pos=(30, 20), size=(100, 25))
         self.ShareCodeRealTimeText = wx.TextCtrl(self.ShareRealtimebox, value = "600050", pos=(30, 45), size=(100, 25))
-        wx.StaticText(self.ShareRealtimebox, label = '*注：此功能只能在交易日的上午9点到下午15点之间使用！', pos=(220, 75), size=(320, 20))
+        wx.StaticText(self.ShareRealtimebox, label = '*注：此功能只能在交易日的上午9点25到下午15点之间使用！', pos=(220, 75), size=(320, 20))
 
         self.btnShareRealTime = wx.Button(self.ShareRealtimebox, label="开始收集数据", pos=(350, 45), size=(90, 25))
         self.btnShareRealTimeStop = wx.Button(self.ShareRealtimebox, label="停止", pos=(470, 45), size=(45, 25))
@@ -77,11 +77,12 @@ class Frame1(wx.Frame):
         self.btnShareRealTimeStop.Bind(wx.EVT_BUTTON, self.StopCollectRealTimeData)
 
         self.__attach_events()
-        self.Bind(wx.EVT_CLOSE, self.OnClose)
-        self.Bind(wx.EVT_SIZE, self.OnFrameSize)
+
+
     def __attach_events(self):
     	self.Bind(wx.EVT_CLOSE, self.OnClose)
-
+        self.Bind(wx.EVT_CLOSE, self.OnClose)
+        self.Bind(wx.EVT_SIZE, self.OnFrameSize)
     #
     # Collect Share data >>>
     #
@@ -98,7 +99,7 @@ class Frame1(wx.Frame):
 
         try:
             share = ShareDB(sharecode = ShareCode, startdate = StartDate, output = self.ShareDBText)
-            wx.LogMessage("开始收集数据...")
+            wx.LogMessage("开始收集历史数据...")
             # self.share.StopCollect = False
             self.StartThread(key = "ShareDB", target = share.GetHistoryData)
         except:
@@ -110,12 +111,18 @@ class Frame1(wx.Frame):
 
     #
     # Collect share data <<<
+
     # Collect real time share data >>>
     #
     def CollectRealTimeData(self, event):
+        t = datetime.datetime.strptime(datetime.datetime.now().strftime('%H:%M:%S'), '%H:%M:%S')
+        if t <= datetime.datetime.strptime("09:25:00", '%H:%M:%S') or \
+           t >= datetime.datetime.strptime("15:00:00", '%H:%M:%S'):
+           self.PopupMessage("此功能只能在交易日的上午9点25到下午15点之间使用！")
+           return 0
         ShareCode = self.ShareCodeRealTimeText.GetValue().replace(' ','')
-        print ShareCode
         RT = Realtime(sharecode = ShareCode, output = self.RealTimeText)
+        wx.LogMessage("开始收集实时数据...")
         self.StartThread(key = "RealTimeData", target = RT.GetRealTimeData)
 
     def StopCollectRealTimeData(self, event):
@@ -129,6 +136,9 @@ class Frame1(wx.Frame):
                                      style=wx.OK | wx.ICON_INFORMATION)
         self.msg1.ShowModal()
 
+    #
+    # Multi-Thread progress function >>>
+    #
     def StartThread(self, key, target):
         """Start the receiver thread"""
         if key in self.thread.keys() and self.thread[key] is not None:
@@ -157,12 +167,9 @@ class Frame1(wx.Frame):
                 self.thread[key].join(1)
                 self.thread[key] = None
                 wx.LogMessage("StopThread stopped")
-
     #
-    # write method for logging module support
+    # Multi-Thread progress function <<<
     #
-    # def write(self, s):
-    #     wx.LogMessage(s.replace("\n", ""))
 
     def OnClose(self, event):
         self.StopThread()

@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import tushare as ts
 import pandas as pd
 import numpy as np
+import logging
 
 from Database import DB
 from matplotlib.dates import DateFormatter, WeekdayLocator, DayLocator, MONDAY, date2num
@@ -13,17 +14,28 @@ from matplotlib.finance import candlestick_ohlc
 
 class StockStrategy():
     def __init__(self, code, start = None, end = None):
-        tmStock  = ts.get_hist_data(code, start, end)
-        idx = []
-        for i in tmStock.index:
-            idx.append(datetime.datetime.strptime(i, "%Y-%m-%d"))
-        tmStock = tmStock.reindex(idx)
-        tmStock.sort_index(ascending=True)
-
         self._code = code
-        self._stock = tmStock.sort_index(ascending=True)
+        self._start_date = start
+        self._end_date = end
+        self._stock = None
+        self.GetShareData()
 
-    def stock_candlestick_ohlc(self, stick = "day", otherseries = None):
+    def GetShareData(self):
+        database = DB("MyShare", self._code)
+        d_start = datetime.datetime.strptime(self._start_date, "%Y-%m-%d")
+        i, result = database.find(_filter = {'date' : {"$gte": d_start}}, _projection = {'_id': False, 'tick': False})
+        if i != 0:
+            self._stock = database.ConstructionDf(result).sort_index(ascending=True)
+        else:
+            logging.debug("Can't get the share data from database, try to get through ts")
+            tmStock  = ts.get_hist_data(self._code, self._start_date, self._end_date)
+            idx = []
+            for i in tmStock.index:
+                idx.append(datetime.datetime.strptime(i, "%Y-%m-%d"))
+            tmStock = tmStock.reindex(idx)
+            self._stock = tmStock.sort_index(ascending=True)
+
+    def stock_candlestick_ohlc(self, event, stick = "day", otherseries = None):
         '''
         这个函数用于绘制股票的k线图，默认绘制日k，也可通过改变stick绘制周k，月k及年k
         otherseries 参数可用于绘制均线，如：
@@ -252,18 +264,12 @@ class StockStrategy():
         stock_backtest["End Port. Value"].plot()
         plt.show()
 
-    def GetShareData(self):
-        ShareDB = DB(db = "MyShare", col = self._code)
-        i, result = ShareDB.find()
-        if i != 0:
-            print i
-
 
 # test code>>>
 if __name__ == '__main__':
     sStrategy = StockStrategy("600050", "2015-01-05")
-    sStrategy.GetShareData()
-    # # sStrategy.stock_candlestick_ohlc()
+    # sStrategy.GetShareData()
+    sStrategy.stock_candlestick_ohlc()
     # # sStrategy.stock_return()
     # # sStrategy.stock_change()
     # sStrategy.stock_singal(draw = False)

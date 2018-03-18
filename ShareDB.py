@@ -76,11 +76,11 @@ class ShareDB():
 				Share_dic['date'] = date
 				logging.debug(Share_dic['date'])
 				self.OutputText("Collecting Share data for" + Share_dic['date'].strftime("%Y-%m-%d") + "\n")
-				df = ts.get_hist_data(cfg.ShareCode, start=date.strftime("%Y-%m-%d"), end=date.strftime("%Y-%m-%d"))
+				df = ts.get_hist_data(self.ShareCode, start=date.strftime("%Y-%m-%d"), end=date.strftime("%Y-%m-%d"))
 				if df is not None and len(df) != 0:
 					Share_dic['_id'] = ObjectId()
 					Share_dic['k_data'] = json.loads(df.to_json(orient = "records"))[0]
-					df = ts.get_tick_data(cfg.ShareCode, date=date.strftime("%Y-%m-%d"), retry_count=10, pause=4)
+					df = ts.get_tick_data(self.ShareCode, date=date.strftime("%Y-%m-%d"), retry_count=10, pause=4)
 					if len(df) > 3: # src = "sn"
 						SortDf = df.sort_values(by = 'time', axis = 0, ascending = True)#.sort_index(ascending=False,inplace=False)
 						SortDf.reset_index(drop = True, inplace = True)
