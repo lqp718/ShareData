@@ -20,6 +20,9 @@ class StockStrategy():
         self._stock = None
         self.GetShareData()
 
+    def __del__(self):
+        pass
+
     def GetShareData(self):
         database = DB("MyShare", self._code)
         d_start = datetime.datetime.strptime(self._start_date, "%Y-%m-%d")
@@ -35,7 +38,7 @@ class StockStrategy():
             tmStock = tmStock.reindex(idx)
             self._stock = tmStock.sort_index(ascending=True)
 
-    def stock_candlestick_ohlc(self, event, stick = "day", otherseries = None):
+    def stock_candlestick_ohlc(self, event = None, stick = "day", otherseries = None):
         '''
         这个函数用于绘制股票的k线图，默认绘制日k，也可通过改变stick绘制周k，月k及年k
         otherseries 参数可用于绘制均线，如：
@@ -88,7 +91,7 @@ class StockStrategy():
         fig, ax = plt.subplots()
         fig.subplots_adjust(bottom=0.2)
         if plotdat.index[-1] - plotdat.index[0] < pd.Timedelta('730 days'):
-            weekFormatter = DateFormatter('%b %d')
+            weekFormatter = DateFormatter('%b %d, %Y')
             ax.xaxis.set_major_locator(mondays)
             ax.xaxis.set_minor_locator(alldays)
         else:
@@ -111,8 +114,14 @@ class StockStrategy():
         plt.setp(plt.gca().get_xticklabels(), rotation=45, horizontalalignment='right')
 
         plt.show()
+        # if event is None:
+        #     plt.show()
+        # else:
+        #     plt.show(block = False)
+        #     while event.isSet():
+        #         time.sleep(1)
 
-    def stock_return(self, draw = True):
+    def stock_return(self, event = None, draw = True):
         '''
         这个函数用于绘制当前股票的回报率, 并更新self._stock['return']
         return[t,0] = price[t] / price[0],
@@ -124,7 +133,7 @@ class StockStrategy():
             self._stock['return'].plot(grid = True).axhline(y = 1, color = "black", lw = 2)
             plt.show()
 
-    def stock_change(self, draw = True):
+    def stock_change(self, event = None, draw = True):
         '''
         这个函数用于绘制当前股票每个交易日的变化情况, 并更新self._stock['change']
         change[t] = log(price[t]) - log(price[t-1])
@@ -136,7 +145,7 @@ class StockStrategy():
             self._stock['change'].plot(grid = True).axhline(y = 0, color = "black", lw = 2)
             plt.show()
 
-    def stock_average(self, average = [], draw = True):
+    def stock_average(self, event = None, average = [], draw = True):
         '''
         这个函数用于绘制相应股票的均值曲线，并更新self._stock中的均线值
         传入参数为list，如：
@@ -156,7 +165,7 @@ class StockStrategy():
             if draw:
                 self.stock_candlestick_ohlc(otherseries = average)
 
-    def stock_regime(self, a1 = "5", a2 = "20", draw = True):
+    def stock_regime(self, event = None, a1 = "5", a2 = "20", draw = True):
         '''
         利用移动均线法判断当前股市状态并绘制股市状态图，同时更新self._stock
         其中a1及a2 只能是字串，并且只能包含数字，且a1 < a2
@@ -170,11 +179,11 @@ class StockStrategy():
             self._stock["Regime"].plot(grid = True).axhline(y = 0, color = "black", lw = 2)
             plt.show()
 
-    def stock_singal(self, a1 = "5", a2 = "20", draw = True):
+    def stock_singal(self, event = None, a1 = "5", a2 = "20", draw = True):
         '''
         根据股市状态绘制买卖信号图，1 代表买入，-1 代表卖出，0代表无操作
         '''
-        self.stock_regime(a1, a2, draw = False)
+        self.stock_regime(event = None, a1 = a1, a2 = a2, draw = False)
         regime_orig = self._stock.ix[-1, "Regime"]
         self._stock.ix[-1, "Regime"] = 0
         #
@@ -183,11 +192,10 @@ class StockStrategy():
         self._stock["Signal"] = np.sign(self._stock["Regime"] - self._stock["Regime"].shift(1))
         self._stock.ix[-1, "Regime"] = regime_orig
         if draw:
-            self._stock["Signal"].plot(grid = True)
-            plt.show()
+            self.stock_candlestick_ohlc(otherseries = ["ma" + a1, "ma" + a2, "Signal"])
 
-    def stock_backtest(self):
-        self.stock_singal(draw = False)
+    def stock_backtest(self, event = None, cash_start = 1000000, a1 = "5", a2 = "20"):
+        self.stock_singal(a1 = a1, a2 = a2, draw = False)
         stock_signals_tmp = pd.concat([
                 pd.DataFrame({"Price": self._stock.loc[self._stock["Signal"] == 1, "close"],
                              "Regime": self._stock.loc[self._stock["Signal"] == 1, "Regime"],
@@ -223,7 +231,7 @@ class StockStrategy():
                             "End": stock_long_profits["End Date"]})
         stock_long_profits["Low"] = tradeperiods.apply(lambda x: min(self._stock.loc[x["Start"]:x["End"], "low"]), axis = 1)
 
-        cash = 100000
+        cash = cash_start
         stock_backtest = pd.DataFrame({"Start Port. Value": [],
                                  "End Port. Value": [],
                                  "End Date": [],
@@ -269,11 +277,11 @@ class StockStrategy():
 if __name__ == '__main__':
     sStrategy = StockStrategy("600050", "2015-01-05")
     # sStrategy.GetShareData()
-    sStrategy.stock_candlestick_ohlc()
+    sStrategy.stock_candlestick_ohlc(event = None)
     # # sStrategy.stock_return()
     # # sStrategy.stock_change()
-    # sStrategy.stock_singal(draw = False)
+    sStrategy.stock_singal()
     # # print sStrategy._stock.loc[:, ["close", "low", "ma5", "ma20", "Regime", "Signal"]].to_json(orient = "index")
     # sStrategy.stock_candlestick_ohlc(otherseries = ["ma5", "ma20", "Regime", "Signal"])
-    # sStrategy.stock_backtest()
+    sStrategy.stock_backtest()
 # test code<<<
