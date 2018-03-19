@@ -27,6 +27,7 @@ class StockStrategy():
         database = DB("MyShare", self._code)
         d_start = datetime.datetime.strptime(self._start_date, "%Y-%m-%d")
         i, result = database.find(_filter = {'date' : {"$gte": d_start}}, _projection = {'_id': False, 'tick': False})
+        logging.debug("Get the share data from database successful")
         if i != 0:
             self._stock = database.ConstructionDf(result).sort_index(ascending=True)
         else:

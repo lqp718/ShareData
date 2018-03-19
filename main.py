@@ -1,3 +1,4 @@
+#!/C/Python27
 # -*- coding: UTF-8 -*-
 
 import wx  
