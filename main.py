@@ -1,4 +1,4 @@
-#!/C/Python27
+#!C:/Python27/python.exe
 # -*- coding: UTF-8 -*-
 
 import wx  
