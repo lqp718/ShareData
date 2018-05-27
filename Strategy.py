@@ -18,6 +18,9 @@ class StockStrategy():
         self._start_date = start
         self._end_date = end
         self._stock = None
+        self._cash = 0
+        self._property = self._cash
+        self._holding_stock = 0
         self.GetShareData()
 
     def __del__(self):
@@ -27,6 +30,7 @@ class StockStrategy():
         database = DB("MyShare", self._code)
         d_start = datetime.datetime.strptime(self._start_date, "%Y-%m-%d")
         i, result = database.find(_filter = {'date' : {"$gte": d_start}}, _projection = {'_id': False, 'tick': False})
+        #i = 0
         if i != 0:
             self._stock = database.ConstructionDf(result).sort_index(ascending=True)
         else:
@@ -194,7 +198,36 @@ class StockStrategy():
         if draw:
             self.stock_candlestick_ohlc(otherseries = ["ma" + a1, "ma" + a2, "Signal"])
 
-    def stock_backtest(self, event = None, cash_start = 1000000, a1 = "5", a2 = "20"):
+    def stock_buy(self, batches, price):
+        trade_val = batches * 100 * price
+        if trade_val <= self._cash:
+            fees = np.floor(trade_val * 1.8 / 10000)
+            if fees < 5:
+                fees = 5
+            self._cash = self._cash - trade_val - fees
+            self._holding_stock = batches
+            self._property = self._cash + self._holding_stock * price * 100
+            print self._property
+        else:
+            logging.error("Don't have enough cash!!!")
+
+
+    def stock_sell(self, batches, price):
+        if batches <= self._holding_stock:
+            trade_val = batches * 100 * price
+            fees = np.floor(trade_val * 1.8 / 10000)
+            if fees < 5:
+                fees = 5
+            fees = fees + np.floor(trade_val * 1 / 1000)
+
+            self._cash = self._cash + trade_val - fees
+            self._holding_stock = self._holding_stock - batches
+            self._property = self._cash + self._holding_stock * price * 100
+            print self._property
+        else:
+            logging.error("Don't have enough stock!!!")
+
+    def stock_backtest(self, event = None, cash_start = 200000, a1 = "10", a2 = "30"):
         self.stock_singal(a1 = a1, a2 = a2, draw = False)
         stock_signals_tmp = pd.concat([
                 pd.DataFrame({"Price": self._stock.loc[self._stock["Signal"] == 1, "close"],
@@ -213,75 +246,44 @@ class StockStrategy():
             stock_signals = stock_signals_tmp.ix[:-1]
         else:
             stock_signals = stock_signals_tmp
-
-        stock_long_profits = pd.DataFrame({
-                # Price 代表每次交易的买入价格
-                "Price": stock_signals.loc[(stock_signals["Signal"] == "Buy") &
-                                          stock_signals["Regime"] == 1, "Price"],
-                # Profit 代表卖出股票时每股股票的盈利值（即卖出价格-买入价格）
-                "Profit": pd.Series(stock_signals["Price"] - stock_signals["Price"].shift(1)).loc[
-                    stock_signals.loc[(stock_signals["Signal"].shift(1) == "Buy") & (stock_signals["Regime"].shift(1) == 1)].index
-                ].tolist(),
-                # End Date 代表卖出股票的日期
-                "End Date": stock_signals["Price"].loc[
-                    stock_signals.loc[(stock_signals["Signal"].shift(1) == "Buy") & (stock_signals["Regime"].shift(1) == 1)].index
-                ].index
-            })
-        tradeperiods = pd.DataFrame({"Start": stock_long_profits.index,
-                            "End": stock_long_profits["End Date"]})
-        stock_long_profits["Low"] = tradeperiods.apply(lambda x: min(self._stock.loc[x["Start"]:x["End"], "low"]), axis = 1)
-
-        cash = cash_start
+        self._cash = cash_start
+        self._property = cash_start
         stock_backtest = pd.DataFrame({"Start Port. Value": [],
-                                 "End Port. Value": [],
-                                 "End Date": [],
-                                 "Shares": [],
-                                 "Share Price": [],
-                                 "Trade Value": [],
-                                 "Profit per Share": [],
-                                 "Total Profit": [],
-                                 "Stop-Loss Triggered": []})
+                                        "End Port. Value": [],
+                                        "Shares": [],
+                                        "Share Price": [],
+                                        "Total Profit": []})
         port_value = .5 # 每次交易控制在总成本的50%
         batch = 100     # 一手股票为100股
-        stoploss = .1   # 止损系数当当前交易最低价格低于买入价格的90% 的时候终止交易
-        for index, row in stock_long_profits.iterrows():
-            batches = np.floor(cash * port_value) // np.ceil(batch * row["Price"]) # batches 代表当次交易所能购买的最多手数
-            trade_val = batches * batch * row["Price"] #当前交易的总金额
-            if row["Low"] < (1 - stoploss) * row["Price"]:   # 如果当前的最低价格已经低于买入价格的80%则终止当前交易
-                # share_profit 代表每股收益, 当达到止损条件时(即当前交易时段股票最低价格已经低于买入价格的90%) 卖出股票，所以此时每股收益为负值
-                share_profit = np.round((1 - stoploss) * row["Price"], 2) - row["Price"]
-                stop_trig = True
-            else:
-                share_profit = row["Profit"]
-                stop_trig = False
-            print share_profit
-            profit = share_profit * batches * batch
+        for index, row in stock_signals.iterrows():
+            print row
+            if row["Signal"] == "Buy":
+                batches = np.floor(self._cash * port_value) // np.ceil(batch * row["Price"]) # batches 代表当次交易所能购买的最多手数
+                self.stock_buy(batches, row['Price'])
+            elif row["Signal"] == "Sell":
+                batches = self._holding_stock 
+                if batches != 0:
+                    self.stock_sell(batches, row['Price'])
 
             stock_backtest = stock_backtest.append(pd.DataFrame({
-                        "Start Port. Value": cash,
-                        "End Port. Value": cash + profit,
-                        "End Date": row["End Date"],
-                        "Shares": batch * batches,
+                        "Start Port. Value": self._cash,
+                        "End Port. Value": self._property,
+                        "Shares": self._holding_stock,
                         "Share Price": row["Price"],
-                        "Trade Value": trade_val,
-                        "Profit per Share": share_profit,
-                        "Total Profit": profit,
-                        "Stop-Loss Triggered": stop_trig
+                        "Total Profit": self._property - cash_start,
                     }, index = [index]))
-            cash = max(0, cash + profit)
         stock_backtest["End Port. Value"].plot()
         plt.show()
-
 
 # test code>>>
 if __name__ == '__main__':
     sStrategy = StockStrategy("600050", "2015-01-05")
     # sStrategy.GetShareData()
-    sStrategy.stock_candlestick_ohlc(event = None)
-    # # sStrategy.stock_return()
-    # # sStrategy.stock_change()
-    sStrategy.stock_singal()
-    # # print sStrategy._stock.loc[:, ["close", "low", "ma5", "ma20", "Regime", "Signal"]].to_json(orient = "index")
+    # sStrategy.stock_candlestick_ohlc(event = None)
+    # sStrategy.stock_return()
+    # sStrategy.stock_change()
+    # sStrategy.stock_singal()
+    # print sStrategy._stock.loc[:, ["close", "low", "ma5", "ma20", "Regime", "Signal"]].to_json(orient = "index")
     # sStrategy.stock_candlestick_ohlc(otherseries = ["ma5", "ma20", "Regime", "Signal"])
     sStrategy.stock_backtest()
 # test code<<<
