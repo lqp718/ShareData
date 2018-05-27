@@ -72,6 +72,9 @@ class ShareDB():
 
 		while not self.stop(event):
 			t = random.uniform(1, 5)
+			if date > datetime.datetime.now():
+				logging.info("All the share data were collected, exit the collection progress!")
+				break
 			try:
 				Share_dic['date'] = date
 				logging.debug(Share_dic['date'])
@@ -100,8 +103,6 @@ class ShareDB():
 					logging.debug("No k_data, pass")
 					self.OutputText("No k_data, pass" + "\n")
 
-				if date.strftime("%Y-%m-%d") == datetime.datetime.now().strftime('%Y-%m-%d'):
-					break
 				time.sleep(t)
 				date = date + delta
 				i = i + 1
