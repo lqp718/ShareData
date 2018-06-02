@@ -19,6 +19,7 @@ class ShareDB():
 		self.StartDate = startdate
 		self.ShareDB = DB(db = "MyShare", col = sharecode)
 		self.RecordDB = DB(db = "MyShare", col = "LastRecord")
+		self.StockInfoDB = DB(db = "MyShare", col = "Stockinfo")
 
 	def OutputText(self, s):
 		if self.StopOutput:
@@ -36,6 +37,71 @@ class ShareDB():
 				self.StopOutput = True
 				return True
 
+	def GetStockInfo(self):
+		doc = { "_id" : None,
+				"code" : None,
+				"name" : None,
+				"timeToMarket": None,
+				"basics": None,
+				}
+		basics_doc = {"CollectDate": None,
+					#
+					# Other key : value will be inster dynamiclly 
+					#	
+				}
+		df = ts.get_stock_basics()
+		clm = [ "name",#股票名称
+				"pe", #市盈率
+				"outstanding",#流通股本(亿)
+				"totals",#总股本(亿)
+				"totalAssets",#总资产(万)
+				"liquidAssets",#流动资产
+				"fixedAssets",#固定资产
+				"reserved",#公积金
+				"reservedPerShare",#每股公积金
+				"esp",#每股收益
+				"bvps",#每股净资
+				"pb",#市净率
+				"timeToMarket",#上市日期
+				"undp",#未分利润
+				"perundp",#每股未分配
+				"rev",#收入同比(%)
+				"profit",#利润同比(%)
+				"gpr",#毛利率(%)
+				"npr",#净利润率(%)
+				"holders"#股东人数
+				]
+		for index in df.index:
+			i, result = self.StockInfoDB.find(_filter = {"code": index})
+			if i == 0:
+				doc["code"] = str(index)
+				doc["_id"] = ObjectId()
+				today = datetime.datetime.now().strftime('%Y-%m-%d')
+				basics_doc["CollectDate"] = datetime.datetime.strptime(today, "%Y-%m-%d")
+				for cl in clm:
+					if cl == "timeToMarket":
+						try:
+							doc["timeToMarket"] = datetime.datetime.strptime(str(df.loc[index]["timeToMarket"]), "%Y%m%d")
+						except:
+							break
+					elif cl == "name":
+						doc["name"] = df.loc[index]["name"]
+					else:
+						basics_doc[cl] = df.loc[index][cl]
+				doc["basics"] = []
+				doc["basics"].append(basics_doc)
+				self.StockInfoDB.insert_one(doc)
+			else:
+				today = datetime.datetime.now().strftime('%Y-%m-%d')
+				basics_doc["CollectDate"] = datetime.datetime.strptime(today, "%Y-%m-%d")
+				for cl in clm:
+					if cl not in ["timeToMarket", "name"]:
+						basics_doc[cl] = df.loc[index][cl]
+
+				tmp_basics = result[0]["basics"]
+				tmp_basics.append(basics_doc)
+				self.StockInfoDB.update(_filter = {"code": index}, _update = {"$set": {"basics": tmp_basics}})
+			time.sleep(0.1)
 
 	def GetHistoryData(self, event = None):
 		delta = datetime.timedelta(days=1)
@@ -132,5 +198,6 @@ if __name__ == '__main__':
 	logging.getLogger().addHandler(console_logger)
 
 	Share = ShareDB(sharecode = "601901", startdate = "2016-01-13")
-	Share.GetHistoryData()
+	Share.GetStockInfo()
+	#print ts.get_growth_data(2014,3)
 #Test code<<<
