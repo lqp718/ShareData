@@ -18,7 +18,7 @@ class ShareDB():
 		self.ShareCode = sharecode
 		self.StartDate = startdate
 		self.ShareDB = DB(db = "MyShare", col = sharecode)
-		self.RecordDB = DB(db = "MyShare", col = "LastRecord")
+		self.RecordDB = DB(db = "MyShare", col = "Record")
 		self.StockInfoDB = DB(db = "MyShare", col = "Stockinfo")
 
 	def OutputText(self, s):
@@ -71,6 +71,9 @@ class ShareDB():
 				"npr",#净利润率(%)
 				"holders"#股东人数
 				]
+		Record_doc = {
+
+		}
 		for index in df.index:
 			i, result = self.StockInfoDB.find(_filter = {"code": index})
 			if i == 0:
@@ -113,24 +116,26 @@ class ShareDB():
 		"tick": None
 		}
 
-		Record_dic = {
+		Record_doc = {
 			"code": self.ShareCode,
-			"date": None,
+			"success": None,
+			"fail" : []
 		}
 
 		i = 0
 		count = 0
+		record = []
 		try:
-			count, result = self.RecordDB.find(_filter = {"code": self.ShareCode})
+			count, record = self.RecordDB.find(_filter = {"code": self.ShareCode})
 			if count != 0:
-				date = result[0]["date"] + delta
+				date = record[0]["success"] + delta
 			else:
 				date = datetime.datetime.strptime(self.StartDate, "%Y-%m-%d")
 				#
 				# Don't have the record data create one
 				#
-				Record_dic['date'] = date
-				self.RecordDB.insert_one(Record_dic)
+				Record_doc['success'] = None
+				self.RecordDB.insert_one(Record_doc)
 		except:
 			date = datetime.datetime.strptime(self.StartDate, "%Y-%m-%d")
 
@@ -163,9 +168,13 @@ class ShareDB():
 							self.OutputText("Collect data successful and insert to database ObjectId = %s" %(InsertResult.inserted_id) + "\n")
 						else:
 							logging.debug("Insert data fail")
+					else:
+						fail = record[0]["fail"]
+						fail.append(date)
+						self.RecordDB.update(_filter = {"code": self.ShareCode}, _update = {"$set": {"fail": fail}})
 						
 				else:
-					self.RecordDB.update(_filter = {"code": self.ShareCode}, _update = {"$set": {"date": date}})
+					self.RecordDB.update(_filter = {"code": self.ShareCode}, _update = {"$set": {"success": date}})
 					logging.debug("No k_data, pass")
 					self.OutputText("No k_data, pass" + "\n")
 
@@ -180,24 +189,23 @@ class ShareDB():
 				trace_log()
 				time.sleep(t)
 				date = date + delta
-			# logging.info("self.StopCollect: %s" % (self.StopCollect))
 		self.ShareDB.logout()
 		self.RecordDB.logout()
 
 
 #Test code >>>
 if __name__ == '__main__':
-	log_file = "ShareDB.log"
-	logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(message)s",
-        filename=log_file)
-	console_logger = logging.StreamHandler()
-	console_logger.setLevel(logging.DEBUG)
-	console_logger.setFormatter(logging.Formatter("%(message)s"))
-	logging.getLogger().addHandler(console_logger)
+	# log_file = "ShareDB.log"
+	# logging.basicConfig(
+ #        level=logging.DEBUG,
+ #        format="%(message)s",
+ #        filename=log_file)
+	# console_logger = logging.StreamHandler()
+	# console_logger.setLevel(logging.DEBUG)
+	# console_logger.setFormatter(logging.Formatter("%(message)s"))
+	# logging.getLogger().addHandler(console_logger)
 
-	Share = ShareDB(sharecode = "601901", startdate = "2016-01-13")
-	Share.GetStockInfo()
-	#print ts.get_growth_data(2014,3)
+	# Share = ShareDB(sharecode = "601901", startdate = "2016-01-13")
+	# Share.GetStockInfo()
+	print (ts.get_profit_data(2015,1))
 #Test code<<<

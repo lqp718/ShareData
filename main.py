@@ -105,7 +105,7 @@ class Frame1(wx.Frame):
 
 
     def __attach_events(self):
-    	self.Bind(wx.EVT_CLOSE, self.OnClose)
+        self.Bind(wx.EVT_CLOSE, self.OnClose)
         self.Bind(wx.EVT_CLOSE, self.OnClose)
         self.Bind(wx.EVT_SIZE, self.OnFrameSize)
     #
@@ -165,7 +165,7 @@ class Frame1(wx.Frame):
     def ShareSingal(self, event):
         code = self.ShareCodeStrategyText.GetValue().replace(" ", "")
         ma_list = self.ShareAverageText.GetValue().split('-')
-        print ma_list
+        print (ma_list)
         s_Strategy = StockStrategy(code = code, start = "1970-01-01")
         self.StartProcess(key = "RealTimeData", target = s_Strategy.stock_singal, ex_args = (ma_list[0], ma_list[1], ))
 
