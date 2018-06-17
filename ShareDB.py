@@ -15,8 +15,16 @@ class ShareDB():
 	def __init__(self, db = "MyShare", output = None):
 		self.Output = output
 		self.StopOutput = False
+<<<<<<< HEAD
 		self._db = db
 		self.RecordDB = DB(db = self._db, col = "Record")
+=======
+		self.ShareCode = sharecode
+		self.StartDate = startdate
+		self.ShareDB = DB(db = "MyShare", col = sharecode)
+		self.RecordDB = DB(db = "MyShare", col = "Record")
+		self.StockInfoDB = DB(db = "MyShare", col = "Stockinfo")
+>>>>>>> 7d7caaef0ad4bf4946499109c5234668d1eaf788
 
 	def OutputText(self, s):
 		if self.StopOutput:
@@ -101,6 +109,9 @@ class ShareDB():
 				"npr",#净利润率(%)
 				"holders"#股东人数
 				]
+		Record_doc = {
+
+		}
 		for index in df.index:
 			i, result = StockInfoDB.find(_filter = {"code": index})
 			if i == 0:
@@ -176,27 +187,46 @@ class ShareDB():
 		"tick": None
 		}
 
+<<<<<<< HEAD
 		HistDataRec_doc = {
 			"type": "HistoryData",
 			"code": sharecode,
 			"last_success": None,
 			"fail_list": None
+=======
+		Record_doc = {
+			"code": self.ShareCode,
+			"success": None,
+			"fail" : []
+>>>>>>> 7d7caaef0ad4bf4946499109c5234668d1eaf788
 		}
 
 		i = 0
 		count = 0
+		record = []
 		try:
+<<<<<<< HEAD
 			count, result = self.RecordDB.find(_filter = {"type": "HistoryData", "code": sharecode})
 			if count != 0:
 				date = result[0]["last_success"] + delta
+=======
+			count, record = self.RecordDB.find(_filter = {"code": self.ShareCode})
+			if count != 0:
+				date = record[0]["success"] + delta
+>>>>>>> 7d7caaef0ad4bf4946499109c5234668d1eaf788
 			else:
 				date = datetime.datetime.strptime(startdate, "%Y-%m-%d")
 				#
 				# Don't have the record data create one
 				#
+<<<<<<< HEAD
 				HistDataRec_doc['last_success'] = date
 				HistDataRec_doc['fail_list'] = []
 				self.RecordDB.insert_one(HistDataRec_doc)
+=======
+				Record_doc['success'] = None
+				self.RecordDB.insert_one(Record_doc)
+>>>>>>> 7d7caaef0ad4bf4946499109c5234668d1eaf788
 		except:
 			date = datetime.datetime.strptime(startdate, "%Y-%m-%d")
 
@@ -239,6 +269,7 @@ class ShareDB():
 							self.OutputText("Collect data successful and insert to database ObjectId = %s" %(InsertResult.inserted_id) + "\n")
 						else:
 							logging.debug("Insert data fail")
+<<<<<<< HEAD
 							self.RecordDB.update(_filter = {"type": "HistoryData", "code": sharecode}, _update = {"$push": {"fail_list": date}})
 					else:
 						# 获取数据失败，添加失败记录
@@ -246,6 +277,15 @@ class ShareDB():
 						
 				else:
 					self.RecordDB.update(_filter = {"type": "HistoryData", "code": sharecode}, _update = {"$set": {"last_success": date}})
+=======
+					else:
+						fail = record[0]["fail"]
+						fail.append(date)
+						self.RecordDB.update(_filter = {"code": self.ShareCode}, _update = {"$set": {"fail": fail}})
+						
+				else:
+					self.RecordDB.update(_filter = {"code": self.ShareCode}, _update = {"$set": {"success": date}})
+>>>>>>> 7d7caaef0ad4bf4946499109c5234668d1eaf788
 					logging.debug("No k_data, pass")
 					self.OutputText("No k_data, pass" + "\n")
 
@@ -262,13 +302,18 @@ class ShareDB():
 				trace_log()
 				time.sleep(t)
 				date = date + delta
+<<<<<<< HEAD
 			# logging.info("self.StopCollect: %s" % (self.StopCollect))
 		StockDB.logout()
+=======
+		self.ShareDB.logout()
+>>>>>>> 7d7caaef0ad4bf4946499109c5234668d1eaf788
 		self.RecordDB.logout()
 
 
 #Test code >>>
 if __name__ == '__main__':
+<<<<<<< HEAD
 	log_file = "ShareDB.log"
 	logging.basicConfig(
         level=logging.DEBUG,
@@ -284,4 +329,19 @@ if __name__ == '__main__':
 	# Share.GetHistoryData(sharecode = "000001", startdate = "2015-01-05")
 	# print ts.get_k_data("600050", start="2015-01-05", autype=None, retry_count=10, pause=4)
 	#print ts.get_report_data(2018,2)["code"]
+=======
+	# log_file = "ShareDB.log"
+	# logging.basicConfig(
+ #        level=logging.DEBUG,
+ #        format="%(message)s",
+ #        filename=log_file)
+	# console_logger = logging.StreamHandler()
+	# console_logger.setLevel(logging.DEBUG)
+	# console_logger.setFormatter(logging.Formatter("%(message)s"))
+	# logging.getLogger().addHandler(console_logger)
+
+	# Share = ShareDB(sharecode = "601901", startdate = "2016-01-13")
+	# Share.GetStockInfo()
+	print (ts.get_profit_data(2015,1))
+>>>>>>> 7d7caaef0ad4bf4946499109c5234668d1eaf788
 #Test code<<<

@@ -1,4 +1,5 @@
-import StringIO, logging, traceback
+import logging, traceback
+from io import StringIO
 
 def trace_log():
     fp = StringIO.StringIO()

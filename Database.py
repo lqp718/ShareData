@@ -53,5 +53,5 @@ if __name__ == '__main__':
 	import datetime
 	date = datetime.datetime.strptime("2016-01-15", "%Y-%m-%d")
 	i, result = database.find(_filter = {'date' : {"$lt": date}}, _projection = {'_id': False, 'tick': False})
-	print database.ConstructionDf(result)
+	print (database.ConstructionDf(result))
 # Test code<<<
