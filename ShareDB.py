@@ -6,6 +6,7 @@ import time
 import random
 import logging
 import json
+import operator
 
 from bson.objectid import ObjectId
 from error import trace_log
@@ -15,16 +16,8 @@ class ShareDB():
 	def __init__(self, db = "MyShare", output = None):
 		self.Output = output
 		self.StopOutput = False
-<<<<<<< HEAD
 		self._db = db
 		self.RecordDB = DB(db = self._db, col = "Record")
-=======
-		self.ShareCode = sharecode
-		self.StartDate = startdate
-		self.ShareDB = DB(db = "MyShare", col = sharecode)
-		self.RecordDB = DB(db = "MyShare", col = "Record")
-		self.StockInfoDB = DB(db = "MyShare", col = "Stockinfo")
->>>>>>> 7d7caaef0ad4bf4946499109c5234668d1eaf788
 
 	def OutputText(self, s):
 		if self.StopOutput:
@@ -50,42 +43,14 @@ class ShareDB():
 				"timeToMarket": None,
 				"basics": [],
 				"report": [],
-				"growth": [],
 				"profit": [],
+				"growth": [],
 				}
 		basics_doc = {"CollectDate": None,
 					#
 					# Other key : value will be inster dynamiclly 
 					#	
 				}
-
-		report_doc = {"CollectQuarter": None,
-					  "eps": None,#每股收益
-					  "eps_yoy": None,#每股收益同比(%)
-					  "bvps": None,#每股净资产
-					  "roe": None,#净资产收益率(%)
-					  "epcf": None,#每股现金流量(元)
-					  "net_profits": None,#净利润(万元)
-					  "profits_yoy": None,#净利润同比(%)
-					  "distrib": None,#分配方案
-					  "report_date": None,#发布日期
-					  }
-
-		growth_doc = {"CollectQuarter": None,
-					  "mbrg": None,#主营业务收入增长率(%)
-					  "nprg": None,#净利润增长率(%)
-					  "nav": None,#净资产增长率
-					  "targ": None,#总资产增长率
-					  "epsg": None,#每股收益增长率
-					  "seg": None,#股东权益增长率
-					  }
-
-		profit_doc = {"CollectQuarter": None,
-					  "net_profit_ratio": None,#净利率(%)
-					  "gross_profit_rate": None,#毛利率(%)
-					  "business_income": None,#营业收入(百万元)
-					  "bips": None,#每股主营业务收入(元)
-					 }
 
 		df = ts.get_stock_basics()
 		basics_clm = [ "name",#股票名称
@@ -109,9 +74,11 @@ class ShareDB():
 				"npr",#净利润率(%)
 				"holders"#股东人数
 				]
-		Record_doc = {
 
-		}
+		# Record_doc = {
+		# 		"type": "StockInfo",
+		# 		"last_success_quarter": None,
+		# }
 		for index in df.index:
 			i, result = StockInfoDB.find(_filter = {"code": index})
 			if i == 0:
@@ -134,7 +101,6 @@ class ShareDB():
 				StockInfoDB.insert_one(doc)
 			else:
 				today = datetime.datetime.now().strftime('%Y-%m-%d')
-				basics_doc["CollectDate"] = None
 				for cl in basics_clm:
 					if cl not in ["timeToMarket", "name"]:
 						basics_doc[cl] = df.loc[index][cl]
@@ -142,36 +108,118 @@ class ShareDB():
 				tmp_basics = result[0]["basics"]
 				for i in range(0, len(tmp_basics)):
 					tmp_basics[i]["CollectDate"] = None
+				basics_doc["CollectDate"] = None
 
 				if basics_doc not in tmp_basics:
 					basics_doc["CollectDate"] = datetime.datetime.strptime(today, "%Y-%m-%d")
 					StockInfoDB.update(_filter = {"code": index}, _update = {"$push": {"basics": basics_doc}})
-			time.sleep(0.1)
-			break
+			time.sleep(0.2)
 
-		year = 2015
-		quarter_list = [1, 2, 3, 4]
+	def GetBasicInfomation(self, year = None, quarter = None):
+		StockInfoDB = DB(db = self._db, col = "Stockinfo")
+		if year == None:
+			year = 2015
+
+		if quarter == None:
+			quarter_list = [1, 2, 3, 4]
+		else:
+			if type(quarter) == list:
+				quarter_list = quarter
+			else:
+				quarter_list = list(quarter)
+
+		report_doc = {"CollectQuarter": None,
+					  "eps": None,#每股收益
+					  "eps_yoy": None,#每股收益同比(%)
+					  "bvps": None,#每股净资产
+					  "roe": None,#净资产收益率(%)
+					  "epcf": None,#每股现金流量(元)
+					  "net_profits": None,#净利润(万元)
+					  "profits_yoy": None,#净利润同比(%)
+					  "distrib": None,#分配方案
+					  "report_date": None,#发布日期
+					  }
+
+		profit_doc = {"CollectQuarter": None,
+					  "net_profit_ratio": None,#净利率(%)
+					  "gross_profit_rate": None,#毛利率(%)
+					  "business_income": None,#营业收入(百万元)
+					  "bips": None,#每股主营业务收入(元)
+					 }
+
+		growth_doc = {"CollectQuarter": None,
+					  "mbrg": None,#主营业务收入增长率(%)
+					  "nprg": None,#净利润增长率(%)
+					  "nav": None,#净资产增长率
+					  "targ": None,#总资产增长率
+					  "epsg": None,#每股收益增长率
+					  "seg": None,#股东权益增长率
+					  }
+
 		while year <= datetime.datetime.now().year:
 			for quarter in quarter_list:
-				#try:
+				try:
+					logging.debug("Collecting rebort data for %s-%s" %(str(year), str(quarter)))
 					df = ts.get_report_data(year,quarter)
-					report_doc["CollectQuarter"] = str(year) + "-" + str(quarter)
-					print report_doc["CollectQuarter"]
 					for index in df.index:
 						code = df.loc[index]["code"]
-						print code
 						i, result = StockInfoDB.find(_filter = {"code": code})
 						if i != 0:
+							report_doc["CollectQuarter"] = str(year) + "-" + str(quarter)
 							for key in report_doc.keys():
 								if key != "CollectQuarter":
 									report_doc[key] = df.loc[index][key]
+							logging.debug ("Stock code match, update DB")
 							StockInfoDB.update(_filter = {"code": code}, _update = {"$push": {"report": report_doc}})
-						else:
+							for key in report_doc.keys():
+								report_doc[key] = None
 							continue
-				#except:
-					#pass
-					break
-			break
+				except:
+					trace_log()
+				time.sleep(random.uniform(1, 10))
+
+			for quarter in quarter_list:
+				try:
+					logging.debug("Collecting profit data for %s-%s" %(str(year), str(quarter)))
+					df = ts.get_profit_data(year,quarter)
+					for index in df.index:
+						code = df.loc[index]["code"]
+						i, result = StockInfoDB.find(_filter = {"code": code})
+						if i != 0:
+							profit_doc["CollectQuarter"] = str(year) + "-" + str(quarter)
+							for key in profit_doc.keys():
+								if key != "CollectQuarter":
+									profit_doc[key] = df.loc[index][key]
+							logging.debug ("Stock code match, update DB")
+							StockInfoDB.update(_filter = {"code": code}, _update = {"$push": {"profit": profit_doc}})
+							for key in profit_doc.keys():
+								profit_doc[key] = None
+							continue
+				except:
+					trace_log()
+				time.sleep(random.uniform(1, 10))
+
+			for quarter in quarter_list:
+				try:
+					logging.debug("Collecting growth data for %s-%s" %(str(year), str(quarter)))
+					df = ts.get_growth_data(year,quarter)
+					for index in df.index:
+						code = df.loc[index]["code"]
+						i, result = StockInfoDB.find(_filter = {"code": code})
+						if i != 0:
+							growth_doc["CollectQuarter"] = str(year) + "-" + str(quarter)
+							for key in growth_doc.keys():
+								if key != "CollectQuarter":
+									growth_doc[key] = df.loc[index][key]
+							logging.debug ("Stock code match, update DB")
+							StockInfoDB.update(_filter = {"code": code}, _update = {"$push": {"growth": growth_doc}})
+							for key in profit_doc.keys():
+								profit_doc[key] = None
+							continue
+				except:
+					trace_log()
+				time.sleep(random.uniform(1, 10))
+
 			year = year + 1
 
 
@@ -187,46 +235,27 @@ class ShareDB():
 		"tick": None
 		}
 
-<<<<<<< HEAD
 		HistDataRec_doc = {
 			"type": "HistoryData",
 			"code": sharecode,
 			"last_success": None,
 			"fail_list": None
-=======
-		Record_doc = {
-			"code": self.ShareCode,
-			"success": None,
-			"fail" : []
->>>>>>> 7d7caaef0ad4bf4946499109c5234668d1eaf788
 		}
 
 		i = 0
 		count = 0
-		record = []
 		try:
-<<<<<<< HEAD
 			count, result = self.RecordDB.find(_filter = {"type": "HistoryData", "code": sharecode})
 			if count != 0:
 				date = result[0]["last_success"] + delta
-=======
-			count, record = self.RecordDB.find(_filter = {"code": self.ShareCode})
-			if count != 0:
-				date = record[0]["success"] + delta
->>>>>>> 7d7caaef0ad4bf4946499109c5234668d1eaf788
 			else:
 				date = datetime.datetime.strptime(startdate, "%Y-%m-%d")
 				#
 				# Don't have the record data create one
 				#
-<<<<<<< HEAD
 				HistDataRec_doc['last_success'] = date
 				HistDataRec_doc['fail_list'] = []
 				self.RecordDB.insert_one(HistDataRec_doc)
-=======
-				Record_doc['success'] = None
-				self.RecordDB.insert_one(Record_doc)
->>>>>>> 7d7caaef0ad4bf4946499109c5234668d1eaf788
 		except:
 			date = datetime.datetime.strptime(startdate, "%Y-%m-%d")
 
@@ -269,7 +298,6 @@ class ShareDB():
 							self.OutputText("Collect data successful and insert to database ObjectId = %s" %(InsertResult.inserted_id) + "\n")
 						else:
 							logging.debug("Insert data fail")
-<<<<<<< HEAD
 							self.RecordDB.update(_filter = {"type": "HistoryData", "code": sharecode}, _update = {"$push": {"fail_list": date}})
 					else:
 						# 获取数据失败，添加失败记录
@@ -277,15 +305,6 @@ class ShareDB():
 						
 				else:
 					self.RecordDB.update(_filter = {"type": "HistoryData", "code": sharecode}, _update = {"$set": {"last_success": date}})
-=======
-					else:
-						fail = record[0]["fail"]
-						fail.append(date)
-						self.RecordDB.update(_filter = {"code": self.ShareCode}, _update = {"$set": {"fail": fail}})
-						
-				else:
-					self.RecordDB.update(_filter = {"code": self.ShareCode}, _update = {"$set": {"success": date}})
->>>>>>> 7d7caaef0ad4bf4946499109c5234668d1eaf788
 					logging.debug("No k_data, pass")
 					self.OutputText("No k_data, pass" + "\n")
 
@@ -302,18 +321,13 @@ class ShareDB():
 				trace_log()
 				time.sleep(t)
 				date = date + delta
-<<<<<<< HEAD
 			# logging.info("self.StopCollect: %s" % (self.StopCollect))
 		StockDB.logout()
-=======
-		self.ShareDB.logout()
->>>>>>> 7d7caaef0ad4bf4946499109c5234668d1eaf788
 		self.RecordDB.logout()
 
 
 #Test code >>>
 if __name__ == '__main__':
-<<<<<<< HEAD
 	log_file = "ShareDB.log"
 	logging.basicConfig(
         level=logging.DEBUG,
@@ -326,22 +340,6 @@ if __name__ == '__main__':
 
 	Share = ShareDB()
 	Share.GetStockInfo()
-	# Share.GetHistoryData(sharecode = "000001", startdate = "2015-01-05")
-	# print ts.get_k_data("600050", start="2015-01-05", autype=None, retry_count=10, pause=4)
-	#print ts.get_report_data(2018,2)["code"]
-=======
-	# log_file = "ShareDB.log"
-	# logging.basicConfig(
- #        level=logging.DEBUG,
- #        format="%(message)s",
- #        filename=log_file)
-	# console_logger = logging.StreamHandler()
-	# console_logger.setLevel(logging.DEBUG)
-	# console_logger.setFormatter(logging.Formatter("%(message)s"))
-	# logging.getLogger().addHandler(console_logger)
-
-	# Share = ShareDB(sharecode = "601901", startdate = "2016-01-13")
-	# Share.GetStockInfo()
-	print (ts.get_profit_data(2015,1))
->>>>>>> 7d7caaef0ad4bf4946499109c5234668d1eaf788
+	Share.GetBasicInfomation()
+	# print (ts.get_profit_data(2015,1))
 #Test code<<<
