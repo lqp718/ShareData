@@ -114,11 +114,39 @@ class ShareDB():
 					basics_doc["CollectDate"] = datetime.datetime.strptime(today, "%Y-%m-%d")
 					StockInfoDB.update(_filter = {"code": index}, _update = {"$push": {"basics": basics_doc}})
 			time.sleep(0.2)
+			break
 
-	def GetBasicInfomation(self, year = None, quarter = None):
+	def GetBasicInfomation(self, year = None, quarter = None, retry = 3):
+		def template(db = None, y = None, q = None, fun = None, k = None, doc = None):
+			try:
+				logging.debug("Collecting %s data for %s-%s" %(k, str(y), str(q)))
+				df = fun(y,q)
+				for index in df.index:
+					code = df.loc[index]["code"]
+					i, result = db.find(_filter = {"code": code})
+					if i != 0:
+						doc["CollectQuarter"] = str(y) + "-" + str(q)
+						for key in doc.keys():
+							if key != "CollectQuarter":
+								doc[key] = df.loc[index][key]
+						logging.debug ("Stock code match, update DB")
+						selecter = "%s.CollectQuarter" % k
+						i, result = db.find(_filter = {"code": code, selecter: doc["CollectQuarter"]})
+						if i == 0:
+							db.update(_filter = {"code": code}, _update = {"$push": {k: doc}})
+
+						for key in doc.keys():
+							doc[key] = None
+						continue
+			except:
+				trace_log()
+			time.sleep(random.uniform(1, 10))
+
 		StockInfoDB = DB(db = self._db, col = "Stockinfo")
 		if year == None:
-			year = 2015
+			start_year = 2015
+		else:
+			start_year = year
 
 		if quarter == None:
 			quarter_list = [1, 2, 3, 4]
@@ -155,73 +183,24 @@ class ShareDB():
 					  "epsg": None,#每股收益增长率
 					  "seg": None,#股东权益增长率
 					  }
+		while retry:
+			while start_year <= datetime.datetime.now().year:
+				for quarter in quarter_list:
+					template(db = StockInfoDB, y = start_year, q = quarter, fun = ts.get_report_data, k = "report", doc = report_doc)
 
-		while year <= datetime.datetime.now().year:
-			for quarter in quarter_list:
-				try:
-					logging.debug("Collecting rebort data for %s-%s" %(str(year), str(quarter)))
-					df = ts.get_report_data(year,quarter)
-					for index in df.index:
-						code = df.loc[index]["code"]
-						i, result = StockInfoDB.find(_filter = {"code": code})
-						if i != 0:
-							report_doc["CollectQuarter"] = str(year) + "-" + str(quarter)
-							for key in report_doc.keys():
-								if key != "CollectQuarter":
-									report_doc[key] = df.loc[index][key]
-							logging.debug ("Stock code match, update DB")
-							StockInfoDB.update(_filter = {"code": code}, _update = {"$push": {"report": report_doc}})
-							for key in report_doc.keys():
-								report_doc[key] = None
-							continue
-				except:
-					trace_log()
-				time.sleep(random.uniform(1, 10))
+				for quarter in quarter_list:
+					template(db = StockInfoDB, y = start_year, q = quarter, fun = ts.get_profit_data, k = "profit", doc = profit_doc)
 
-			for quarter in quarter_list:
-				try:
-					logging.debug("Collecting profit data for %s-%s" %(str(year), str(quarter)))
-					df = ts.get_profit_data(year,quarter)
-					for index in df.index:
-						code = df.loc[index]["code"]
-						i, result = StockInfoDB.find(_filter = {"code": code})
-						if i != 0:
-							profit_doc["CollectQuarter"] = str(year) + "-" + str(quarter)
-							for key in profit_doc.keys():
-								if key != "CollectQuarter":
-									profit_doc[key] = df.loc[index][key]
-							logging.debug ("Stock code match, update DB")
-							StockInfoDB.update(_filter = {"code": code}, _update = {"$push": {"profit": profit_doc}})
-							for key in profit_doc.keys():
-								profit_doc[key] = None
-							continue
-				except:
-					trace_log()
-				time.sleep(random.uniform(1, 10))
+				for quarter in quarter_list:
+					template(db = StockInfoDB, y = start_year, q = quarter, fun = ts.get_growth_data, k = "growth", doc = growth_doc)
 
-			for quarter in quarter_list:
-				try:
-					logging.debug("Collecting growth data for %s-%s" %(str(year), str(quarter)))
-					df = ts.get_growth_data(year,quarter)
-					for index in df.index:
-						code = df.loc[index]["code"]
-						i, result = StockInfoDB.find(_filter = {"code": code})
-						if i != 0:
-							growth_doc["CollectQuarter"] = str(year) + "-" + str(quarter)
-							for key in growth_doc.keys():
-								if key != "CollectQuarter":
-									growth_doc[key] = df.loc[index][key]
-							logging.debug ("Stock code match, update DB")
-							StockInfoDB.update(_filter = {"code": code}, _update = {"$push": {"growth": growth_doc}})
-							for key in profit_doc.keys():
-								profit_doc[key] = None
-							continue
-				except:
-					trace_log()
-				time.sleep(random.uniform(1, 10))
+				start_year = start_year + 1
 
-			year = year + 1
-
+			retry = retry - 1
+			if year == None:
+				start_year = 2015
+			else:
+				start_year = year
 
 	def GetHistoryData(self, sharecode = None, startdate = None, event = None):
 		delta = datetime.timedelta(days=1)
@@ -340,6 +319,6 @@ if __name__ == '__main__':
 
 	Share = ShareDB()
 	Share.GetStockInfo()
-	Share.GetBasicInfomation()
+	Share.GetBasicInfomation(year = 2017)
 	# print (ts.get_profit_data(2015,1))
 #Test code<<<
