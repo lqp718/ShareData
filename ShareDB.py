@@ -114,7 +114,6 @@ class ShareDB():
 					basics_doc["CollectDate"] = datetime.datetime.strptime(today, "%Y-%m-%d")
 					StockInfoDB.update(_filter = {"code": index}, _update = {"$push": {"basics": basics_doc}})
 			time.sleep(0.2)
-			break
 
 	def GetBasicInfomation(self, year = None, quarter = None, retry = 3):
 		def template(db = None, y = None, q = None, fun = None, k = None, doc = None):
@@ -241,7 +240,7 @@ class ShareDB():
 		
 
 		while not self.stop(event):
-			t = random.uniform(1, 10)
+			t = random.uniform(0.5, 5)
 			if date > datetime.datetime.now():
 				logging.info("All the share data were collected, exit the collection progress!")
 				break
@@ -259,6 +258,8 @@ class ShareDB():
 					qfq_df = ts.get_k_data(sharecode, start=date.strftime("%Y-%m-%d"), end=date.strftime("%Y-%m-%d"), retry_count=10, pause=4)
 					if qfq_df is not None and len(qfq_df) != 0:
 						Share_doc['k_data_qfq'] = json.loads(qfq_df.to_json(orient = "records"))[0]
+					else:
+						logging.debug("Get K_qfq data fail")
 
 					#获取历史分笔数据
 					df = ts.get_tick_data(sharecode, date=date.strftime("%Y-%m-%d"), retry_count=10, pause=4)
@@ -278,8 +279,12 @@ class ShareDB():
 						else:
 							logging.debug("Insert data fail")
 							self.RecordDB.update(_filter = {"type": "HistoryData", "code": sharecode}, _update = {"$push": {"fail_list": date}})
+						for k in Share_doc.keys():
+							Share_doc[k] = None
 					else:
 						# 获取数据失败，添加失败记录
+						logging.debug("Get tick data fail")
+						StockDB.insert_one(Share_doc)
 						self.RecordDB.update(_filter = {"type": "HistoryData", "code": sharecode}, _update = {"$push": {"fail_list": date}})
 						
 				else:
@@ -290,11 +295,11 @@ class ShareDB():
 				time.sleep(t)
 				date = date + delta
 
-				#每收集10次数据延迟10秒
+				#每收集10次数据延迟5秒
 				i = i + 1
 				if i == 10:
 					i = 0
-					time.sleep(10)
+					time.sleep(5)
 			except:
 				logging.error("Exception!!!")
 				trace_log()
@@ -318,7 +323,8 @@ if __name__ == '__main__':
 	logging.getLogger().addHandler(console_logger)
 
 	Share = ShareDB()
-	Share.GetStockInfo()
-	Share.GetBasicInfomation(year = 2017)
+	# Share.GetStockInfo()
+	# Share.GetBasicInfomation(year = 2018)
+	Share.GetHistoryData(sharecode = "600050", startdate = "2015-01-05")
 	# print (ts.get_profit_data(2015,1))
 #Test code<<<
