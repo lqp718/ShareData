@@ -125,21 +125,22 @@ class ShareDB():
 					i, result = db.find(_filter = {"code": code})
 					if i != 0:
 						doc["CollectQuarter"] = str(y) + "-" + str(q)
-						for key in doc.keys():
-							if key != "CollectQuarter":
-								doc[key] = df.loc[index][key]
-						logging.debug ("Stock code match, update DB")
 						selecter = "%s.CollectQuarter" % k
 						i, result = db.find(_filter = {"code": code, selecter: doc["CollectQuarter"]})
 						if i == 0:
+							for key in doc.keys():
+								if key != "CollectQuarter":
+									doc[key] = df.loc[index][key]
+							logging.debug ("Stock %s match, update DB" % (code))
 							db.update(_filter = {"code": code}, _update = {"$push": {k: doc}})
-
-						for key in doc.keys():
-							doc[key] = None
-						continue
+							time.sleep(0.2)
+						else:
+							for key in doc.keys():
+								doc[key] = None
+							continue
 			except:
 				trace_log()
-			time.sleep(random.uniform(1, 10))
+			time.sleep(random.uniform(1, 5))
 
 		StockInfoDB = DB(db = self._db, col = "Stockinfo")
 		if year == None:
@@ -324,7 +325,7 @@ if __name__ == '__main__':
 
 	Share = ShareDB()
 	# Share.GetStockInfo()
-	# Share.GetBasicInfomation(year = 2018)
-	Share.GetHistoryData(sharecode = "600050", startdate = "2015-01-05")
+	Share.GetBasicInfomation(year = 2015)
+	# Share.GetHistoryData(sharecode = "600050", startdate = "2015-01-05")
 	# print (ts.get_profit_data(2015,1))
 #Test code<<<
