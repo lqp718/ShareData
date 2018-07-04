@@ -2,3 +2,5 @@
 /ShareDB.log
 /test.log
 /Test.py
+/__pycache__
+/log

@@ -49,9 +49,10 @@ class DB():
 
 # Test code>>>
 if __name__ == '__main__':
-	database = DB("MyShare", "600050")
+	database = DB("MyShare", "Stockinfo")
 	import datetime
 	date = datetime.datetime.strptime("2016-01-15", "%Y-%m-%d")
-	i, result = database.find(_filter = {'date' : {"$lt": date}}, _projection = {'_id': False, 'tick': False})
-	print (database.ConstructionDf(result))
+	i, result = database.find(_filter = {})
+	for index in range(0, i):
+		print (type(result[index]['code']))
 # Test code<<<

@@ -99,6 +99,7 @@ class ShareDB():
 				doc["basics"] = []
 				doc["basics"].append(basics_doc)
 				StockInfoDB.insert_one(doc)
+				time.sleep(0.2)
 			else:
 				today = datetime.datetime.now().strftime('%Y-%m-%d')
 				for cl in basics_clm:
@@ -113,7 +114,7 @@ class ShareDB():
 				if basics_doc not in tmp_basics:
 					basics_doc["CollectDate"] = datetime.datetime.strptime(today, "%Y-%m-%d")
 					StockInfoDB.update(_filter = {"code": index}, _update = {"$push": {"basics": basics_doc}})
-			time.sleep(0.2)
+					time.sleep(0.2)
 
 	def GetBasicInfomation(self, year = None, quarter = None, retry = 3):
 		def template(db = None, y = None, q = None, fun = None, k = None, doc = None):
@@ -204,7 +205,7 @@ class ShareDB():
 
 	def GetHistoryData(self, sharecode = None, startdate = None, event = None):
 		delta = datetime.timedelta(days=1)
-		StockDB = DB(db = "MyShare", col = sharecode)
+		StockDB = DB(db = "MyShare_Test", col = sharecode)
 
 		Share_doc = {
 		"_id": None,
@@ -215,8 +216,7 @@ class ShareDB():
 		}
 
 		HistDataRec_doc = {
-			"type": "HistoryData",
-			"code": sharecode,
+			"type": "Record",
 			"last_success": None,
 			"fail_list": None
 		}
@@ -224,7 +224,7 @@ class ShareDB():
 		i = 0
 		count = 0
 		try:
-			count, result = self.RecordDB.find(_filter = {"type": "HistoryData", "code": sharecode})
+			count, result = StockDB.find(_filter = {"type": "Record"})
 			if count != 0:
 				date = result[0]["last_success"] + delta
 			else:
@@ -234,28 +234,27 @@ class ShareDB():
 				#
 				HistDataRec_doc['last_success'] = date
 				HistDataRec_doc['fail_list'] = []
-				self.RecordDB.insert_one(HistDataRec_doc)
+				StockDB.insert_one(HistDataRec_doc)
 		except:
 			date = datetime.datetime.strptime(startdate, "%Y-%m-%d")
 
 		
 
 		while not self.stop(event):
-			t = random.uniform(0.5, 5)
 			if date > datetime.datetime.now():
 				logging.info("All the share data were collected, exit the collection progress!")
 				break
 			try:
 				Share_doc['date'] = date
 				logging.debug(Share_doc['date'])
-				self.OutputText("Collecting Share data for" + Share_doc['date'].strftime("%Y-%m-%d") + "\n")
 				df = ts.get_k_data(sharecode, start=date.strftime("%Y-%m-%d"), end=date.strftime("%Y-%m-%d"), autype = None, retry_count=10, pause=4)
 				if df is not None and len(df) != 0:
+					logging.debug("Get K data successful")
 					Share_doc['_id'] = ObjectId()
 					Share_doc['k_data'] = json.loads(df.to_json(orient = "records"))[0]
 
 					#获取复权数据
-					time.sleep(t)
+					time.sleep(random.uniform(1, 10))
 					qfq_df = ts.get_k_data(sharecode, start=date.strftime("%Y-%m-%d"), end=date.strftime("%Y-%m-%d"), retry_count=10, pause=4)
 					if qfq_df is not None and len(qfq_df) != 0:
 						Share_doc['k_data_qfq'] = json.loads(qfq_df.to_json(orient = "records"))[0]
@@ -274,41 +273,38 @@ class ShareDB():
 						#将获取到的数据插入数据库
 						InsertResult = StockDB.insert_one(Share_doc)
 						if InsertResult.acknowledged:
-							self.RecordDB.update(_filter = {"type": "HistoryData", "code": sharecode}, _update = {"$set": {"last_success": date}})
+							StockDB.update(_filter = {"type": "Record"}, _update = {"$set": {"last_success": date}})
 							logging.debug("Insert data successful ObjectId = %s" %(InsertResult.inserted_id))
-							self.OutputText("Collect data successful and insert to database ObjectId = %s" %(InsertResult.inserted_id) + "\n")
 						else:
 							logging.debug("Insert data fail")
-							self.RecordDB.update(_filter = {"type": "HistoryData", "code": sharecode}, _update = {"$push": {"fail_list": date}})
+							StockDB.update(_filter = {"type": "Record"}, _update = {"$push": {"fail_list": date}})
 						for k in Share_doc.keys():
 							Share_doc[k] = None
 					else:
 						# 获取数据失败，添加失败记录
 						logging.debug("Get tick data fail")
 						StockDB.insert_one(Share_doc)
-						self.RecordDB.update(_filter = {"type": "HistoryData", "code": sharecode}, _update = {"$push": {"fail_list": date}})
+						StockDB.update(_filter = {"type": "Record"}, _update = {"$push": {"fail_list": date}})
 						
 				else:
-					self.RecordDB.update(_filter = {"type": "HistoryData", "code": sharecode}, _update = {"$set": {"last_success": date}})
+					StockDB.update(_filter = {"type": "Record"}, _update = {"$set": {"last_success": date}})
 					logging.debug("No k_data, pass")
-					self.OutputText("No k_data, pass" + "\n")
 
-				time.sleep(t)
+				time.sleep(random.uniform(1, 10))
 				date = date + delta
 
 				#每收集10次数据延迟5秒
 				i = i + 1
 				if i == 10:
 					i = 0
-					time.sleep(5)
+					time.sleep(10)
 			except:
 				logging.error("Exception!!!")
 				trace_log()
-				time.sleep(t)
+				time.sleep(random.uniform(1, 10))
 				date = date + delta
 			# logging.info("self.StopCollect: %s" % (self.StopCollect))
 		StockDB.logout()
-		self.RecordDB.logout()
 
 
 #Test code >>>
@@ -325,7 +321,9 @@ if __name__ == '__main__':
 
 	Share = ShareDB()
 	# Share.GetStockInfo()
-	Share.GetBasicInfomation(year = 2015)
+	# Share.GetBasicInfomation(year = 2015)
 	# Share.GetHistoryData(sharecode = "600050", startdate = "2015-01-05")
+	qfq_df = ts.get_k_data("600067", start="2016-07-04", end="2018-07-04", retry_count=10, pause=4)
+	print (qfq_df)
 	# print (ts.get_profit_data(2015,1))
 #Test code<<<
