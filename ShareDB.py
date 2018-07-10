@@ -206,12 +206,12 @@ class ShareDB():
 	def GetHistoryData(self, sharecode = None, startdate = None, event = None):
 		delta = datetime.timedelta(days=1)
 		StockDB = DB(db = "MyShare_Test", col = sharecode)
+		logging.info("Getting historyData for %s" % (sharecode))
 
 		Share_doc = {
 		"_id": None,
 		"date": None,
 		"k_data": None,
-		"k_data_qfq": None,
 		"tick": None
 		}
 
@@ -238,32 +238,44 @@ class ShareDB():
 		except:
 			date = datetime.datetime.strptime(startdate, "%Y-%m-%d")
 
-		
+		for _ in range(3):
+			k_df = ts.get_k_data(sharecode, start=date.strftime("%Y-%m-%d"), autype = None, retry_count=10, pause=4)
+			if k_df is not None and len(k_df) != 0:
+				break
+			time.sleep(random.uniform(1, 10))
 
 		while not self.stop(event):
-			if date > datetime.datetime.now():
+			if k_df is None or len(k_df) == 0:
+				logging.error("！！！k_df is None, skip this stock")
+				break
+			if date.strftime("%Y-%m-%d") >= datetime.datetime.today().strftime("%Y-%m-%d"):
 				logging.info("All the share data were collected, exit the collection progress!")
 				break
 			try:
 				Share_doc['date'] = date
-				logging.debug(Share_doc['date'])
-				df = ts.get_k_data(sharecode, start=date.strftime("%Y-%m-%d"), end=date.strftime("%Y-%m-%d"), autype = None, retry_count=10, pause=4)
+				logging.info(Share_doc['date'])
+				df = k_df.loc[k_df["date"] == date.strftime("%Y-%m-%d")]
+				if df is None or len(df) == 0:
+					logging.debug("Didn't find k data in k_df, try to get again")
+					df = ts.get_k_data(sharecode, start=date.strftime("%Y-%m-%d"), end=date.strftime("%Y-%m-%d"), autype = None, retry_count=10, pause=4)
+
 				if df is not None and len(df) != 0:
 					logging.debug("Get K data successful")
 					Share_doc['_id'] = ObjectId()
 					Share_doc['k_data'] = json.loads(df.to_json(orient = "records"))[0]
 
 					#获取复权数据
-					time.sleep(random.uniform(1, 10))
-					qfq_df = ts.get_k_data(sharecode, start=date.strftime("%Y-%m-%d"), end=date.strftime("%Y-%m-%d"), retry_count=10, pause=4)
-					if qfq_df is not None and len(qfq_df) != 0:
-						Share_doc['k_data_qfq'] = json.loads(qfq_df.to_json(orient = "records"))[0]
-					else:
-						logging.debug("Get K_qfq data fail")
+					# time.sleep(random.uniform(1, 10))
+					# qfq_df = ts.get_k_data(sharecode, start=date.strftime("%Y-%m-%d"), end=date.strftime("%Y-%m-%d"), retry_count=10, pause=4)
+					# if qfq_df is not None and len(qfq_df) != 0:
+					# 	Share_doc['k_data_qfq'] = json.loads(qfq_df.to_json(orient = "records"))[0]
+					# else:
+					# 	logging.debug("Get K_qfq data fail")
 
 					#获取历史分笔数据
 					df = ts.get_tick_data(sharecode, date=date.strftime("%Y-%m-%d"), retry_count=10, pause=4)
 					if len(df) > 3: # src = "sn"
+						logging.debug("Getting tick data successful")
 						SortDf = df.sort_values(by = 'time', axis = 0, ascending = True)#.sort_index(ascending=False,inplace=False)
 						SortDf.reset_index(drop = True, inplace = True)
 						SortDf['type'] = SortDf['type'].replace("买盘", 1).replace("卖盘", -1).replace("中性盘", 0)
@@ -276,19 +288,19 @@ class ShareDB():
 							StockDB.update(_filter = {"type": "Record"}, _update = {"$set": {"last_success": date}})
 							logging.debug("Insert data successful ObjectId = %s" %(InsertResult.inserted_id))
 						else:
-							logging.debug("Insert data fail")
+							logging.error("Insert data to DB fail")
 							StockDB.update(_filter = {"type": "Record"}, _update = {"$push": {"fail_list": date}})
 						for k in Share_doc.keys():
 							Share_doc[k] = None
 					else:
 						# 获取数据失败，添加失败记录
-						logging.debug("Get tick data fail")
+						logging.error("Getting tick data fail")
 						StockDB.insert_one(Share_doc)
 						StockDB.update(_filter = {"type": "Record"}, _update = {"$push": {"fail_list": date}})
 						
 				else:
 					StockDB.update(_filter = {"type": "Record"}, _update = {"$set": {"last_success": date}})
-					logging.debug("No k_data, pass")
+					logging.info("No k_data, pass")
 
 				time.sleep(random.uniform(1, 10))
 				date = date + delta
@@ -303,27 +315,35 @@ class ShareDB():
 				trace_log()
 				time.sleep(random.uniform(1, 10))
 				date = date + delta
-			# logging.info("self.StopCollect: %s" % (self.StopCollect))
+				break #use for debug
 		StockDB.logout()
 
 
 #Test code >>>
 if __name__ == '__main__':
-	log_file = "ShareDB.log"
-	logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(message)s",
-        filename=log_file)
-	console_logger = logging.StreamHandler()
-	console_logger.setLevel(logging.DEBUG)
-	console_logger.setFormatter(logging.Formatter("%(message)s"))
-	logging.getLogger().addHandler(console_logger)
+	# log_file = "ShareDB.log"
+	# logging.basicConfig(
+ #        level=logging.DEBUG,
+ #        format="%(message)s",
+ #        filename=log_file)
+	# console_logger = logging.StreamHandler()
+	# console_logger.setLevel(logging.DEBUG)
+	# console_logger.setFormatter(logging.Formatter("%(message)s"))
+	# logging.getLogger().addHandler(console_logger)
 
 	Share = ShareDB()
 	# Share.GetStockInfo()
 	# Share.GetBasicInfomation(year = 2015)
-	# Share.GetHistoryData(sharecode = "600050", startdate = "2015-01-05")
-	qfq_df = ts.get_k_data("600067", start="2016-07-04", end="2018-07-04", retry_count=10, pause=4)
-	print (qfq_df)
+	Share.GetHistoryData(sharecode = "600050", startdate = "2015-01-05")
+	# qfq_df = ts.get_k_data("603713", start="2015-01-05", autype = None, retry_count=10, pause=4)
+	# print (qfq_df)
+	# if qfq_df is not None and len(qfq_df) != 0:
+	# 	df = qfq_df.loc[qfq_df["date"] == "2015-01-05"]
+	# 	print (df)
+	# 	if df is not None and len(df) != 0:
+	# 		print(json.loads(df.to_json(orient = "records"))[0])
+
+	# df = ts.get_k_data("000006", start="2015-01-05", autype = None, retry_count=10, pause=4)
+	# print (df)
 	# print (ts.get_profit_data(2015,1))
 #Test code<<<

@@ -23,20 +23,16 @@ def split_stock_list(s_list = None, split = 10):
 
 def stockdb_task(stocklist = []):
     log_file = "./log/ShareDB.log"
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(asctime)s - %(message)s",
-        )
-    console_logger = logging.FileHandler(filename = log_file, encoding="utf-8", delay=True)
-    console_logger.setLevel(logging.DEBUG)
+    console_logger = logging.FileHandler(filename = log_file, mode = 'a', encoding="utf-8", delay=True)
+    logging.getLogger().setLevel(logging.ERROR)
+    console_logger.setLevel(logging.NOTSET)
     console_logger.setFormatter(logging.Formatter("%(message)s"))
     logging.getLogger().addHandler(console_logger)
     Share = ShareDB()
     for code in stocklist:
         logging.getLogger().handlers[0].baseFilename = "./log/ShareDB_%s.log" % (code)
         Share.GetHistoryData(sharecode = code, startdate = "2018-07-03")
-    
-    logging.shutdown()
+        logging.getLogger().handlers[0].close()
 
 
 
