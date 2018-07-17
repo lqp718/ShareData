@@ -5,9 +5,11 @@ import time
 import threading
 import socket
 import urllib
+import random
+import logging
 
 def get_proxy_list():
-    header = {"Host": "www.xicidaili.com",
+    header = {#"Host": "www.xicidaili.com",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36",
             "Connection": "keep-alive",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
@@ -16,57 +18,78 @@ def get_proxy_list():
             }
     ip_l = []
     proxy_l = []
-    for page in range (1, 10):
-        req = Request("http://www.xicidaili.com/wt/%d" % (page), headers = header)
-        lines = urlopen(req, timeout=10).read().decode('utf-8')
-        pattern=re.compile(r'<td>(\d.*?)</td>')
-        ip_page=re.findall(pattern,str(lines))
-        ip_l.extend(ip_page)
-        time.sleep(5)
+    opener = urllib.request.build_opener()
+    urllib.request.install_opener(opener)
+    #for page in random.sample(range (1, 6), 5):
+    for page in range (1, 3):
+        logging.debug("get IP from page %d" % (page))
+        #req = Request("http://www.xicidaili.com/wt/%d" % (page), headers = header)
+        req = Request("http://www.89ip.cn/index_%d.html" % (page), headers = header)
+        try:
+            lines = urlopen(req, timeout=10).read().decode('utf-8')
+            pattern=re.compile(r'<td>(\d.*?\d)</td>')
+            ip_page=re.findall(pattern,str("".join(lines.split())))
+            ip_l.extend(ip_page)
+        except:
+            pass
+        time.sleep(3)
 
-    for i in range(0,len(ip_l),4):
+    for i in range(0,len(ip_l),3):
         proxy_host = ip_l[i]+':'+ip_l[i+1]
         proxy_temp = {"http":proxy_host}
         proxy_l.append(proxy_temp)
-
+    # print (proxy_l)
+    logging.debug("collected IP count \n%d" % (len(proxy_l)))
     return proxy_l
 
 def mp_thread_test(proxys):
-    proxy_ip=open('proxy_ip.txt','w')  #新建一个储存有效IP的文档
-    lock=threading.Lock()  #建立一个锁
-    #验证代理IP有效性的方法
+    proxy_ip=[]
+    lock=threading.Lock()
+
     def test(proxy):
-        socket.setdefaulttimeout(5)  #设置全局超时时间
-        url = "http://market.finance.sina.com.cn/downxls.php?date=2015-01-05&symbol=sh600050"  #打算爬取的网址
+        socket.setdefaulttimeout(20)
+        urls = ["http://web.ifzq.gtimg.cn", "http://market.finance.sina.com.cn/downxls.php?"]
         try:
             proxy_support = urllib.request.ProxyHandler(proxy)
             opener = urllib.request.build_opener(proxy_support)
-            opener.addheaders=[("User-Agent","Mozilla/5.0 (Windows NT 10.0; WOW64)")]
+            opener.addheaders=[("User-Agent","Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36",)]
             urllib.request.install_opener(opener)
-            urllib.request.urlopen(url).read()
-            lock.acquire()     #获得锁
-            print(proxy,'is OK')        
-            proxy_ip.write('%s\n' %str(proxy))  #写入该代理IP
-            lock.release()     #释放锁
+            for url in urls:
+                lines = urlopen(url).read().decode('GBK')
+
+            if lines == "Param date cannot be empty!":
+                lock.acquire()
+                # print(proxy, lines)
+                proxy_ip.append(proxy)
+                lock.release()
         except Exception as e:
-            lock.acquire()
-            print(proxy,e)
-            lock.release()
-    #单线程验证
-    '''for i in range(len(proxys)):
-        test(i)'''
-    #多线程验证    
+            pass
+
     threads=[]
     for ip in proxys:
         thread=threading.Thread(target=test,args=[ip])
         threads.append(thread)
         thread.start()
-    #阻塞主进程，等待所有子线程结束
+
     for thread in threads:
         thread.join()
-        
-    proxy_ip.close()  #关闭文件
+    logging.debug("Proxy list passed the test \n%s" % (proxy_ip))
+    return proxy_ip
+
+def get_proxy():
+    while True:
+        pl = get_proxy_list()
+        proxy_list = mp_thread_test(pl)
+        if proxy_list:
+            break
+        time.sleep(20)
+    return proxy_list
 
 if __name__ == '__main__':
-    pl = get_proxy_list()
-    mp_thread_test(pl)
+    log_file = "proxy_test.log"
+    console_logger = logging.FileHandler(filename = log_file, mode = 'a', encoding="utf-8", delay=True)
+    logging.getLogger().setLevel(logging.DEBUG)
+    console_logger.setLevel(logging.NOTSET)
+    console_logger.setFormatter(logging.Formatter("%(message)s"))
+    logging.getLogger().addHandler(console_logger)
+    get_proxy()

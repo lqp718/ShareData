@@ -18,6 +18,18 @@ class ShareDB():
 		self.StopOutput = False
 		self._db = db
 		self.RecordDB = DB(db = self._db, col = "Record")
+		self.TradeDayList = None
+
+	def isTradeDay(self, date):
+		if self.TradeDayList == None:
+			df = ts.trade_cal()
+			self.TradeDayList = df.loc[df["isOpen"] == 1]["calendarDate"].tolist()
+
+		if date in self.TradeDayList:
+			return True
+		else:
+			return False
+
 
 	def OutputText(self, s):
 		if self.StopOutput:
@@ -239,15 +251,27 @@ class ShareDB():
 			date = datetime.datetime.strptime(startdate, "%Y-%m-%d")
 
 		for _ in range(3):
-			k_df = ts.get_k_data(sharecode, start=date.strftime("%Y-%m-%d"), autype = None, retry_count=10, pause=4)
+			try:
+				k_df = ts.get_k_data(sharecode, start=date.strftime("%Y-%m-%d"), autype = None, retry_count=10, pause=4)
+			except:
+				logging.error("Exception!!!")
+				trace_log()
+				yield 1
 			if k_df is not None and len(k_df) != 0:
 				break
-			time.sleep(random.uniform(1, 10))
+			time.sleep(random.uniform(1, 5))
+
+		if k_df is None or len(k_df) == 0:
+			base = date
+			days = (datetime.datetime.now().strftime('%Y-%m-%d') - date).days
+			date_list = [base + datetime.timedelta(days=x) for x in range(0, days + 1)]
+			for day in date_list:
+				if self.isTradeDay(day.strftime('%Y-%m-%d')):
+					logging.error("！！！k_df is None, skip this stock")
+					break
+			return 0
 
 		while not self.stop(event):
-			if k_df is None or len(k_df) == 0:
-				logging.error("！！！k_df is None, skip this stock")
-				break
 			if date.strftime("%Y-%m-%d") >= datetime.datetime.today().strftime("%Y-%m-%d"):
 				logging.info("All the share data were collected, exit the collection progress!")
 				break
@@ -255,9 +279,6 @@ class ShareDB():
 				Share_doc['date'] = date
 				logging.info(Share_doc['date'])
 				df = k_df.loc[k_df["date"] == date.strftime("%Y-%m-%d")]
-				if df is None or len(df) == 0:
-					logging.debug("Didn't find k data in k_df, try to get again")
-					df = ts.get_k_data(sharecode, start=date.strftime("%Y-%m-%d"), end=date.strftime("%Y-%m-%d"), autype = None, retry_count=10, pause=4)
 
 				if df is not None and len(df) != 0:
 					logging.debug("Get K data successful")
@@ -302,7 +323,7 @@ class ShareDB():
 					StockDB.update(_filter = {"type": "Record"}, _update = {"$set": {"last_success": date}})
 					logging.info("No k_data, pass")
 
-				time.sleep(random.uniform(1, 10))
+				time.sleep(random.uniform(1, 5))
 				date = date + delta
 
 				#每收集10次数据延迟5秒
@@ -313,28 +334,28 @@ class ShareDB():
 			except:
 				logging.error("Exception!!!")
 				trace_log()
-				time.sleep(random.uniform(1, 10))
-				date = date + delta
-				break #use for debug
+				yield 1
 		StockDB.logout()
+
+		return 0
 
 
 #Test code >>>
 if __name__ == '__main__':
-	# log_file = "ShareDB.log"
-	# logging.basicConfig(
- #        level=logging.DEBUG,
- #        format="%(message)s",
- #        filename=log_file)
-	# console_logger = logging.StreamHandler()
-	# console_logger.setLevel(logging.DEBUG)
-	# console_logger.setFormatter(logging.Formatter("%(message)s"))
-	# logging.getLogger().addHandler(console_logger)
+	log_file = "ShareDB.log"
+	logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(message)s",
+        filename=log_file)
+	console_logger = logging.StreamHandler()
+	console_logger.setLevel(logging.DEBUG)
+	console_logger.setFormatter(logging.Formatter("%(message)s"))
+	logging.getLogger().addHandler(console_logger)
 
 	Share = ShareDB()
 	# Share.GetStockInfo()
 	# Share.GetBasicInfomation(year = 2015)
-	Share.GetHistoryData(sharecode = "600050", startdate = "2015-01-05")
+	# Share.GetHistoryData(sharecode = "600050", startdate = "2015-01-05")
 	# qfq_df = ts.get_k_data("603713", start="2015-01-05", autype = None, retry_count=10, pause=4)
 	# print (qfq_df)
 	# if qfq_df is not None and len(qfq_df) != 0:
@@ -343,7 +364,7 @@ if __name__ == '__main__':
 	# 	if df is not None and len(df) != 0:
 	# 		print(json.loads(df.to_json(orient = "records"))[0])
 
-	# df = ts.get_k_data("000006", start="2015-01-05", autype = None, retry_count=10, pause=4)
-	# print (df)
+	df = ts.get_k_data("600050", start = "2015-01-05", autype = None, retry_count=10, pause=4)
+	print (df)
 	# print (ts.get_profit_data(2015,1))
 #Test code<<<
