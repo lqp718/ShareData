@@ -97,12 +97,12 @@
 
 # _*_ coding=utf-8 _*_
 import csv
-from urllib.request import urlopen, Request
+from urllib.request import urlopen, Request, HTTPCookieProcessor, build_opener, install_opener, ProxyHandler
 from bs4 import BeautifulSoup
 from urllib.request import HTTPError
 import pandas as pd
-from io import StringIO
 import time
+import http.cookiejar
 
 csvFile = open("editors.csv",'a+',newline='', encoding='GBK')
 writer = csv.writer(csvFile)
@@ -113,15 +113,22 @@ header = {"Host": "market.finance.sina.com.cn",
            "Accept-Ancoding": "gzip, deflate",
            "Accept-Aanguage": "zh-CN,zh;q=0.9"
            }
-for index in range (1, 20):
-    print (index)
-    try:
-        req = Request("http://market.finance.sina.com.cn/transHis.php?symbol=sh600050&date=2015-01-05&page=%s" % (index), headers = header)
-        print(req.get_full_url())
-        html = urlopen(req).read().decode('GBK')
-    except HTTPError as e:
-        print(e)
-        print(e.read())
+cj = http.cookiejar.LWPCookieJar()
+cookie_support = HTTPCookieProcessor(cj)
+#proxy_support = ProxyHandler({'http': '138.185.255.74:53281'})
+opener = build_opener(cookie_support)
+install_opener(opener)
+
+for index in range (1, 100):
+    for _ in range(3):
+        try:
+            print (index)
+            req = Request("http://market.finance.sina.com.cn/transHis.php?symbol=sh600050&date=2015-01-05&page=%s" % (index), headers = header)
+            #print(req.get_full_url())
+            html = urlopen(req).read().decode('GBK')
+            break
+        except HTTPError as e:
+            print(e)
     bsObj = BeautifulSoup(html,"html.parser")
     table = bsObj.findAll("table")[0]
     if table is None:
@@ -144,6 +151,7 @@ for index in range (1, 20):
                 writer.writerow(csvRow)
     except:
         pass
+    html = None
     time.sleep(1)
 csvFile.close()
 df = pd.read_csv("editors.csv", names = ['time', 'price', 'change', 'volume', 'amount', 'type'],
