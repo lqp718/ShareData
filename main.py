@@ -1,11 +1,14 @@
 import multiprocessing as mp
-from ShareDB import ShareDB
-from Database import DB
 import logging, logging.config, logging.handlers
 import time
 import random
-from IpPool.ip import get_proxy
 import urllib
+import http.cookiejar
+
+from ShareDB import ShareDB
+from Database import DB
+from IpPool.ip import get_proxy
+from urllib.request import HTTPCookieProcessor, build_opener, install_opener, ProxyHandler
 
 def get_stock_list():
     db = DB("MyShare", "Stockinfo")
@@ -32,20 +35,25 @@ def stockdb_task(stocklist = [], process_id = 0, proxy_queue = None):
     console_logger.setLevel(logging.NOTSET)
     console_logger.setFormatter(logging.Formatter("%(message)s"))
     logging.getLogger().addHandler(console_logger)
+    logging.getLogger().handlers[0].baseFilename = "./log/ShareDB_%s.log" % (process_id)
     Share = ShareDB()
 
+    cj = http.cookiejar.LWPCookieJar()
+    cookie_support = HTTPCookieProcessor(cj)
     proxy = proxy_queue.get()
-    proxy_support = urllib.request.ProxyHandler(proxy)
-    opener = urllib.request.build_opener(proxy_support)
-    urllib.request.install_opener(opener)
+    proxy_support = ProxyHandler(proxy)
+    opener = build_opener(cookie_support, proxy_support)
+    install_opener(opener)
     for code in stocklist:
-        logging.getLogger().handlers[0].baseFilename = "./log/ShareDB_%s.log" % (process_id)
         for tmp in Share.GetHistoryData(sharecode = code, startdate = "2018-07-03"):
             proxy = proxy_queue.get()
             logging.error("update proxy %s" % (proxy))
-            proxy_support = urllib.request.ProxyHandler(proxy)
-            opener = urllib.request.build_opener(proxy_support)
-            urllib.request.install_opener(opener)
+            cj = http.cookiejar.LWPCookieJar()
+            cookie_support = HTTPCookieProcessor(cj)
+            proxy = proxy_queue.get()
+            proxy_support = ProxyHandler(proxy)
+            opener = build_opener(cookie_support, proxy_support)
+            install_opener(opener)
         #logging.getLogger().handlers[0].close()
 
 def update_proxy(q, e):
@@ -67,7 +75,7 @@ def update_proxy(q, e):
             proxy_list = get_proxy()
             for p in proxy_list:
                 q.put(p)
-        time.sleep(1)
+        time.sleep(10)
 
 if __name__ == '__main__':
     stock_list = get_stock_list()

@@ -21,24 +21,31 @@ def get_proxy_list():
     opener = urllib.request.build_opener()
     urllib.request.install_opener(opener)
     #for page in random.sample(range (1, 6), 5):
-    for page in range (1, 3):
-        logging.debug("get IP from page %d" % (page))
+    for page in range (1, 2):
+        #logging.debug("get IP from page %d" % (page))
         #req = Request("http://www.xicidaili.com/wt/%d" % (page), headers = header)
-        req = Request("http://www.89ip.cn/index_%d.html" % (page), headers = header)
+        #req = Request("http://api.xdaili.cn/xdaili-api//greatRecharge/getGreatIp?spiderId=03d973cf76f94aca9887e84868453d59&orderno=YZ20187222643m2Bwb7&returnType=1&count=15", headers = header)
+        req = Request("http://dec.ip3366.net/api/?key=20180722175459925&getnum=15&isp=1&anonymoustype=1&filter=1&area=1&proxytype=0", headers = header)
         try:
             lines = urlopen(req, timeout=10).read().decode('utf-8')
-            pattern=re.compile(r'<td>(\d.*?\d)</td>')
-            ip_page=re.findall(pattern,str("".join(lines.split())))
-            ip_l.extend(ip_page)
+            # pattern=re.compile(r'<td>(\d.*?\d)</td>')
+            # ip_page=re.findall(pattern,str("".join(lines.split())))
+            # ip_l.extend(ip_page)
+            # print(lines.split("\r\n"))
+            ip_l = lines.split("\r\n")
         except:
             pass
-        time.sleep(3)
+        time.sleep(5)
 
-    for i in range(0,len(ip_l),3):
-        proxy_host = ip_l[i]+':'+ip_l[i+1]
-        proxy_temp = {"http":proxy_host}
-        proxy_l.append(proxy_temp)
-    # print (proxy_l)
+    # for i in range(0,len(ip_l),3):
+    #     proxy_host = ip_l[i]+':'+ip_l[i+1]
+    #     proxy_temp = {"http":proxy_host}
+    #     proxy_l.append(proxy_temp)
+    for proxy_host in ip_l:
+        if proxy_host != "":
+            proxy_temp = {"http":proxy_host}
+            proxy_l.append(proxy_temp)
+
     logging.debug("collected IP count \n%d" % (len(proxy_l)))
     return proxy_l
 
@@ -47,8 +54,8 @@ def mp_thread_test(proxys):
     lock=threading.Lock()
 
     def test(proxy):
-        socket.setdefaulttimeout(20)
-        urls = ["http://web.ifzq.gtimg.cn", "http://market.finance.sina.com.cn/downxls.php?"]
+        socket.setdefaulttimeout(5)
+        urls = ["http://web.ifzq.gtimg.cn", "http://market.finance.sina.com.cn/transHis.php?"]
         try:
             proxy_support = urllib.request.ProxyHandler(proxy)
             opener = urllib.request.build_opener(proxy_support)
@@ -82,7 +89,7 @@ def get_proxy():
         proxy_list = mp_thread_test(pl)
         if proxy_list:
             break
-        time.sleep(20)
+        time.sleep(10)
     return proxy_list
 
 if __name__ == '__main__':
@@ -93,3 +100,4 @@ if __name__ == '__main__':
     console_logger.setFormatter(logging.Formatter("%(message)s"))
     logging.getLogger().addHandler(console_logger)
     get_proxy()
+    #get_proxy_list()
