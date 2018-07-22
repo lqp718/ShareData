@@ -28,7 +28,7 @@ class ShareDB():
 
 	def isTradeDay(self, date):
 		if self.TradeDayList == None:
-			df = ts.trade_cal()
+			df = pd.read_csv("calAll.csv")
 			self.TradeDayList = df.loc[df["isOpen"] == 1]["calendarDate"].tolist()
 
 		if date in self.TradeDayList:
