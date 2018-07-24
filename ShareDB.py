@@ -283,7 +283,7 @@ class ShareDB():
 			time.sleep(1)
 
 		csvFile.close()
-		df = pd.read_csv("editors.csv", names = ['time', 'price', 'change', 'volume', 'amount', 'type'],
+		df = pd.read_csv(csv_file, names = ['time', 'price', 'change', 'volume', 'amount', 'type'],
 		                   skiprows=[0], encoding = "GBK")
 		return (df)
 
@@ -396,7 +396,7 @@ class ShareDB():
 					StockDB.update(_filter = {"type": "Record"}, _update = {"$set": {"last_success": date}})
 					logging.info("No k_data, pass")
 
-				# time.sleep(random.uniform(1, 5))
+				time.sleep(random.uniform(1, 5))
 				date = date + delta
 
 				#每收集10次数据延迟5秒
