@@ -55,7 +55,7 @@ def mp_thread_test(proxys):
 
     def test(proxy):
         socket.setdefaulttimeout(5)
-        urls = ["http://web.ifzq.gtimg.cn", "http://market.finance.sina.com.cn/transHis.php?"]
+        urls = ["http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?", "http://market.finance.sina.com.cn/transHis.php?"]
         try:
             proxy_support = urllib.request.ProxyHandler(proxy)
             opener = urllib.request.build_opener(proxy_support)

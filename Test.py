@@ -48,11 +48,11 @@ import urllib
 import random
 import datetime
 
-proxy_support = urllib.request.ProxyHandler({'http': '123.7.177.20:9999'})
+proxy_support = urllib.request.ProxyHandler({'https': '114.230.144.59:4328'})
 opener = urllib.request.build_opener(proxy_support)
 urllib.request.install_opener(opener)
 
-print (urlopen("http://web.ifzq.gtimg.cn").read().decode('GBK'))
+print (urlopen("http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?").read().decode('GBK'))
 # #"http://market.finance.sina.com.cn/transHis.php?"
 print (urlopen("http://market.finance.sina.com.cn/transHis.php?").read().decode('GBK'))
 # # #print (urlopen("http://api.xicidaili.com/free2016.txt").read())
