@@ -48,13 +48,17 @@ import urllib
 import random
 import datetime
 
-proxy_support = urllib.request.ProxyHandler({'https': '114.230.144.59:4328'})
-opener = urllib.request.build_opener(proxy_support)
-urllib.request.install_opener(opener)
-
-print (urlopen("http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?").read().decode('GBK'))
-# #"http://market.finance.sina.com.cn/transHis.php?"
-print (urlopen("http://market.finance.sina.com.cn/transHis.php?").read().decode('GBK'))
+# proxy_support = urllib.request.ProxyHandler({'http': '140.255.7.69:4325'})
+# opener = urllib.request.build_opener(proxy_support)
+# urllib.request.install_opener(opener)
+lines = urlopen("http://http.tiqu.qingjuhe.cn/getip?num=3&type=1&pro=&city=0&yys=0&port=1&pack=19139&ts=0&ys=0&cs=0&lb=1&sb=0&pb=4&mr=0&regions=").read().decode('utf-8')
+print ("您的套餐今日已到达上限" in lines)
+# print (urlopen("http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?").read().decode('GBK'))
+# # #"http://market.finance.sina.com.cn/transHis.php?"
+# print (urlopen("http://market.finance.sina.com.cn/transHis.php?").read().decode('GBK'))
+# print (urlopen("http://icanhazip.com/").read().decode('GBK'))
+# "http://http.tiqu.qingjuhe.cn/getip?num=1&type=1&pro=&city=0&yys=0&port=1&pack=19139&ts=0&ys=0&cs=0&lb=1&sb=0&pb=4&mr=0&regions="
+# "http://http.tiqu.qingjuhe.cn/getip?num=2&type=1&pro=&city=0&yys=0&port=1&pack=19139&ts=0&ys=0&cs=0&lb=1&sb=0&pb=4&mr=0&regions="
 # # #print (urlopen("http://api.xicidaili.com/free2016.txt").read())
 # # #http://icanhazip.com/
 # # time.sleep(random.uniform(1, 2))
@@ -70,6 +74,7 @@ print (urlopen("http://market.finance.sina.com.cn/transHis.php?").read().decode(
 
 # print(type(q.get()))
 # print(q.empty())
+# print(q.qsize())
 
 # def test():
 #     yield 1

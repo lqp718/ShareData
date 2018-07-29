@@ -28,7 +28,7 @@ def split_stock_list(s_list = None, split = 10):
         index = index + len_pre_item
     return splited_list
 
-def stockdb_task(stocklist = [], process_id = 0, proxy_queue = None):
+def stockdb_task(stocklist = [], process_id = 0, proxy_queue = None, proxy_request = None):
     log_file = "./log/ShareDB.log"
     console_logger = logging.FileHandler(filename = log_file, mode = 'a', encoding="utf-8", delay=True)
     logging.getLogger().setLevel(logging.DEBUG)
@@ -40,23 +40,26 @@ def stockdb_task(stocklist = [], process_id = 0, proxy_queue = None):
 
     cj = http.cookiejar.LWPCookieJar()
     cookie_support = HTTPCookieProcessor(cj)
+    proxy_request.put("1")
     proxy = proxy_queue.get()
+    proxy_request.get()
     proxy_support = ProxyHandler(proxy)
     opener = build_opener(cookie_support, proxy_support)
     install_opener(opener)
     for code in stocklist:
-        for tmp in Share.GetHistoryData(sharecode = code, startdate = "2018-07-03"):
-            proxy = proxy_queue.get()
-            logging.error("update proxy %s" % (proxy))
+        for tmp in Share.GetHistoryData(sharecode = code, startdate = "2015-01-05"):
             cj = http.cookiejar.LWPCookieJar()
             cookie_support = HTTPCookieProcessor(cj)
+            proxy_request.put("1")
             proxy = proxy_queue.get()
+            proxy_request.get()
+            logging.error("update proxy %s" % (proxy))
             proxy_support = ProxyHandler(proxy)
             opener = build_opener(cookie_support, proxy_support)
             install_opener(opener)
         #logging.getLogger().handlers[0].close()
 
-def update_proxy(q, e):
+def update_proxy(proxy_queue, proxy_request, event):
     log_file = "./log/proxy.log"
     console_logger = logging.FileHandler(filename = log_file, mode = 'a', encoding="utf-8", delay=True)
     logging.getLogger().setLevel(logging.DEBUG)
@@ -64,36 +67,34 @@ def update_proxy(q, e):
     console_logger.setFormatter(logging.Formatter("%(message)s"))
     logging.getLogger().addHandler(console_logger)
 
-    logging.debug("Collecting Proxy...")
-    proxy_list = get_proxy()
-    for p in proxy_list:
-        q.put(p)
-
-    while e.is_set():
-        if q.empty():
-            logging.debug("proxy queue is empty, re-collect proxy")
-            proxy_list = get_proxy()
-            for p in proxy_list:
-                q.put(p)
+    while event.is_set():
+        if proxy_queue.empty():
+            proxy_count = proxy_request.qsize()
+            if proxy_count != 0:
+                logging.debug("proxy queue is empty, collect %d proxy" % (proxy_count))
+                proxy_list = get_proxy(proxy_count)
+                for p in proxy_list:
+                    proxy_queue.put(p)
         time.sleep(10)
 
 if __name__ == '__main__':
     stock_list = get_stock_list()
-    splited_list = split_stock_list(s_list = stock_list, split = 10)
+    splited_list = split_stock_list(s_list = stock_list, split = 5)
 
-    q = mp.Queue()
+    q_1 = mp.Queue()
+    q_2 = mp.Queue()
 
     #Create process to update the proxy queue
     do_update_proxy = mp.Event()
     do_update_proxy.set()
-    proxy_process = mp.Process(target=update_proxy, args=(q, do_update_proxy,))
+    proxy_process = mp.Process(target=update_proxy, args=(q_1, q_2, do_update_proxy,))
     proxy_process.start()
 
     #Create process to collect the stock data
     process_id = 0
     procs = list()
     for li in splited_list:
-        proc = mp.Process(target=stockdb_task, args=(li, process_id, q,))
+        proc = mp.Process(target=stockdb_task, args=(li, process_id, q_1, q_2))
         process_id = process_id + 1
         procs.append(proc)
     for p in procs:

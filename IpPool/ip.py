@@ -8,7 +8,7 @@ import urllib
 import random
 import logging
 
-def get_proxy_list():
+def get_proxy_list(count = 1, retry = 3):
     header = {#"Host": "www.xicidaili.com",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36",
             "Connection": "keep-alive",
@@ -21,18 +21,19 @@ def get_proxy_list():
     opener = urllib.request.build_opener()
     urllib.request.install_opener(opener)
     #for page in random.sample(range (1, 6), 5):
-    for page in range (1, 2):
+    for _ in range (retry):
         #logging.debug("get IP from page %d" % (page))
         #req = Request("http://www.xicidaili.com/wt/%d" % (page), headers = header)
-        #req = Request("http://api.xdaili.cn/xdaili-api//greatRecharge/getGreatIp?spiderId=03d973cf76f94aca9887e84868453d59&orderno=YZ20187222643m2Bwb7&returnType=1&count=15", headers = header)
-        req = Request("http://dec.ip3366.net/api/?key=20180722175459925&getnum=15&isp=1&anonymoustype=1&filter=1&area=1&proxytype=0", headers = header)
+        req = Request("http://http.tiqu.qingjuhe.cn/getip?num=%d&type=1&pro=&city=0&yys=0&port=1&pack=19139&ts=0&ys=0&cs=0&lb=1&sb=0&pb=45&mr=0&regions=" % (count), headers = header)
         try:
             lines = urlopen(req, timeout=10).read().decode('utf-8')
+            if "您的套餐今日已到达上限" in lines:
+                break
             # pattern=re.compile(r'<td>(\d.*?\d)</td>')
             # ip_page=re.findall(pattern,str("".join(lines.split())))
             # ip_l.extend(ip_page)
-            # print(lines.split("\r\n"))
             ip_l = lines.split("\r\n")
+            break
         except:
             pass
         time.sleep(5)
@@ -54,7 +55,7 @@ def mp_thread_test(proxys):
     lock=threading.Lock()
 
     def test(proxy):
-        socket.setdefaulttimeout(5)
+        socket.setdefaulttimeout(10)
         urls = ["http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?", "http://market.finance.sina.com.cn/transHis.php?"]
         try:
             proxy_support = urllib.request.ProxyHandler(proxy)
@@ -83,9 +84,9 @@ def mp_thread_test(proxys):
     logging.debug("Proxy list passed the test \n%s" % (proxy_ip))
     return proxy_ip
 
-def get_proxy():
+def get_proxy(count = 1):
     while True:
-        pl = get_proxy_list()
+        pl = get_proxy_list(count)
         proxy_list = mp_thread_test(pl)
         if proxy_list:
             break
@@ -99,5 +100,5 @@ if __name__ == '__main__':
     console_logger.setLevel(logging.NOTSET)
     console_logger.setFormatter(logging.Formatter("%(message)s"))
     logging.getLogger().addHandler(console_logger)
-    get_proxy()
+    get_proxy(count = 1)
     #get_proxy_list()

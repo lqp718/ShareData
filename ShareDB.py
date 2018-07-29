@@ -289,7 +289,7 @@ class ShareDB():
 
 	def GetHistoryData(self, sharecode = None, startdate = None, event = None):
 		delta = datetime.timedelta(days=1)
-		StockDB = DB(db = "MyShare_Test", col = sharecode)
+		StockDB = DB(db = "MyShare_Tick", col = sharecode)
 		logging.info("Getting historyData for %s" % (sharecode))
 
 		Share_doc = {
@@ -316,7 +316,7 @@ class ShareDB():
 				#
 				# Don't have the record data create one
 				#
-				HistDataRec_doc['last_success'] = date
+				HistDataRec_doc['last_success'] = date - delta
 				HistDataRec_doc['fail_list'] = []
 				StockDB.insert_one(HistDataRec_doc)
 		except:
