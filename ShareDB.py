@@ -260,7 +260,7 @@ class ShareDB():
 				raise IOError(ct.NETWORK_URL_ERROR_MSG)
 
 			bsObj = BeautifulSoup(html,"html.parser")
-			table = bsObj.findAll("table")[0]
+			table = bsObj.findAll("table")[0] if bsObj.findAll("table") != [] else None
 			if table is None:
 				break
 			rows = table.findAll("tr")
@@ -391,12 +391,13 @@ class ShareDB():
 						logging.error("Getting tick data fail")
 						StockDB.insert_one(Share_doc)
 						StockDB.update(_filter = {"type": "Record"}, _update = {"$push": {"fail_list": date}})
+
+					time.sleep(random.uniform(1, 5))
 						
 				else:
 					StockDB.update(_filter = {"type": "Record"}, _update = {"$set": {"last_success": date}})
 					logging.info("No k_data, pass")
 
-				time.sleep(random.uniform(1, 5))
 				date = date + delta
 
 				#每收集10次数据延迟5秒

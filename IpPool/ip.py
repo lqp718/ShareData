@@ -28,6 +28,7 @@ def get_proxy_list(count = 1, retry = 3):
         try:
             lines = urlopen(req, timeout=10).read().decode('utf-8')
             if "您的套餐今日已到达上限" in lines:
+                logging.debug("今日已到达上限")
                 break
             # pattern=re.compile(r'<td>(\d.*?\d)</td>')
             # ip_page=re.findall(pattern,str("".join(lines.split())))
