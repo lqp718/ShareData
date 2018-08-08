@@ -79,7 +79,7 @@ def update_proxy(proxy_queue, proxy_request, event):
 
 if __name__ == '__main__':
     stock_list = get_stock_list()
-    splited_list = split_stock_list(s_list = stock_list, split = 10)
+    splited_list = split_stock_list(s_list = stock_list, split = 100)
 
     q_1 = mp.Queue()
     q_2 = mp.Queue()

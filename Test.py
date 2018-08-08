@@ -101,67 +101,83 @@
 # print (ts.trade_cal())
 
 #_*_ coding=utf-8 _*_
-import csv
-from urllib.request import urlopen, Request, HTTPCookieProcessor, build_opener, install_opener, ProxyHandler
-from bs4 import BeautifulSoup
-from urllib.request import HTTPError
-import pandas as pd
+# import csv
+# from urllib.request import urlopen, Request, HTTPCookieProcessor, build_opener, install_opener, ProxyHandler
+# from bs4 import BeautifulSoup
+# from urllib.request import HTTPError
+# import pandas as pd
+# import time
+# import http.cookiejar
+
+# csvFile = open("editors.csv",'a+',newline='', encoding='GBK')
+# writer = csv.writer(csvFile)
+# header = {"Host": "market.finance.sina.com.cn",
+#            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36",
+#            "Connection": "keep-alive",
+#            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+#            "Accept-Ancoding": "gzip, deflate",
+#            "Accept-Aanguage": "zh-CN,zh;q=0.9"
+#            }
+# cj = http.cookiejar.LWPCookieJar()
+# cookie_support = HTTPCookieProcessor(cj)
+# #proxy_support = ProxyHandler({'http': '138.185.255.74:53281'})
+# opener = build_opener(cookie_support)
+# install_opener(opener)
+
+# for index in range (1, 2):
+#     for _ in range(1):
+#         try:
+#             print (index)
+#             req = Request("http://market.finance.sina.com.cn/transHis.php?symbol=sz002820&date=2016-11-25&page=1", headers = header)
+#             #print(req.get_full_url())
+#             html = urlopen(req).read().decode('GBK')
+#             break
+#         except HTTPError as e:
+#             print(e)
+#     bsObj = BeautifulSoup(html,"html.parser")
+#     print (bsObj.findAll("table") == [])
+#     table = bsObj.findAll("table")[0] if bsObj.findAll("table") != [] else None
+#     if table is None:
+#         print("no table");
+#         break
+#     rows = table.findAll("tr")
+#     if len(rows) == 1:
+#         break
+#     try:
+#         for row in rows:
+#             csvRow = []
+#             for cell in row.findAll(['td','th']):
+#                 text = cell.get_text()
+#                 if index == 1:
+#                     csvRow.append(text.replace(",", ""))
+#                 else:
+#                     if text not in ["成交时间", "成交价", "价格变动", "成交量(手)", "成交额(元)", "性质"]:
+#                         csvRow.append(text.replace(",", ""))
+#             if csvRow:
+#                 writer.writerow(csvRow)
+#     except:
+#         pass
+#     html = None
+#     time.sleep(1)
+# csvFile.close()
+# df = pd.read_csv("editors.csv", names = ['time', 'price', 'change', 'volume', 'amount', 'type'],
+#                    skiprows=[0], encoding = "GBK")
+
+# print (df)
+
+import datetime
 import time
-import http.cookiejar
 
-csvFile = open("editors.csv",'a+',newline='', encoding='GBK')
-writer = csv.writer(csvFile)
-header = {"Host": "market.finance.sina.com.cn",
-           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36",
-           "Connection": "keep-alive",
-           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
-           "Accept-Ancoding": "gzip, deflate",
-           "Accept-Aanguage": "zh-CN,zh;q=0.9"
-           }
-cj = http.cookiejar.LWPCookieJar()
-cookie_support = HTTPCookieProcessor(cj)
-#proxy_support = ProxyHandler({'http': '138.185.255.74:53281'})
-opener = build_opener(cookie_support)
-install_opener(opener)
+start_time = datetime.datetime.now()
 
-for index in range (1, 2):
-    for _ in range(1):
-        try:
-            print (index)
-            req = Request("http://market.finance.sina.com.cn/transHis.php?symbol=sz002820&date=2016-11-25&page=1", headers = header)
-            #print(req.get_full_url())
-            html = urlopen(req).read().decode('GBK')
-            break
-        except HTTPError as e:
-            print(e)
-    bsObj = BeautifulSoup(html,"html.parser")
-    print (bsObj.findAll("table") == [])
-    table = bsObj.findAll("table")[0] if bsObj.findAll("table") != [] else None
-    if table is None:
-        print("no table");
-        break
-    rows = table.findAll("tr")
-    if len(rows) == 1:
-        break
-    try:
-        for row in rows:
-            csvRow = []
-            for cell in row.findAll(['td','th']):
-                text = cell.get_text()
-                if index == 1:
-                    csvRow.append(text.replace(",", ""))
-                else:
-                    if text not in ["成交时间", "成交价", "价格变动", "成交量(手)", "成交额(元)", "性质"]:
-                        csvRow.append(text.replace(",", ""))
-            if csvRow:
-                writer.writerow(csvRow)
-    except:
-        pass
-    html = None
-    time.sleep(1)
-csvFile.close()
-df = pd.read_csv("editors.csv", names = ['time', 'price', 'change', 'volume', 'amount', 'type'],
-                   skiprows=[0], encoding = "GBK")
+def test():
+    if True:
+        time.sleep(10)
+        global start_time
+        end_time = datetime.datetime.now()
+        print(dir(end_time - start_time))
+        print((end_time - start_time).days)
+        print (datetime.date.today())
 
-print (df)
 
+test()

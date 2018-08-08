@@ -245,24 +245,26 @@ class ShareDB():
 			for _ in range(retry_count):
 				try:
 					html = None
+					table = None
 					url = url_tmp + "&page=%s" % (index)
 					logging.debug(url)
 					req = Request(url, headers = header)
 					html = urlopen(req, timeout=10).read().decode('GBK')
 					if html != None:
-						break
+						bsObj = BeautifulSoup(html,"html.parser")
+						table = bsObj.findAll("table")[0] if bsObj.findAll("table") != [] else None
+						if table != None:
+							break
 				except:
 					trace_log()
-					time.sleep(pause)
+				time.sleep(pause)
 
 			if html is None:
 				csvFile.close()
 				raise IOError(ct.NETWORK_URL_ERROR_MSG)
-
-			bsObj = BeautifulSoup(html,"html.parser")
-			table = bsObj.findAll("table")[0] if bsObj.findAll("table") != [] else None
 			if table is None:
 				break
+
 			rows = table.findAll("tr")
 			if len(rows) == 1:
 				break
