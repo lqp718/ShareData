@@ -4,6 +4,8 @@ import time
 import random
 import urllib
 import http.cookiejar
+import datetime
+import os
 
 from ShareDB import ShareDB
 from Database import DB
@@ -30,12 +32,19 @@ def split_stock_list(s_list = None, split = 10):
 
 def stockdb_task(stocklist = [], process_id = 0, proxy_queue = None, proxy_request = None):
     log_file = "./log/ShareDB.log"
+
+    date_dir = datetime.datetime.now().strftime("%Y%m%d")
+    log_path = os.path.join("log", date_dir)
+    if not os.path.exists(log_path):
+        os.makedirs(log_path)
+    baseFilename = os.path.join(log_path, "ShareDB_%s.log" % (process_id))
+
     console_logger = logging.FileHandler(filename = log_file, mode = 'a', encoding="utf-8", delay=True)
     logging.getLogger().setLevel(logging.DEBUG)
     console_logger.setLevel(logging.NOTSET)
     console_logger.setFormatter(logging.Formatter("%(message)s"))
     logging.getLogger().addHandler(console_logger)
-    logging.getLogger().handlers[0].baseFilename = "./log/ShareDB_%s.log" % (process_id)
+    logging.getLogger().handlers[0].baseFilename = baseFilename
     Share = ShareDB()
 
     cj = http.cookiejar.LWPCookieJar()

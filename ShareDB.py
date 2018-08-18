@@ -240,19 +240,19 @@ class ShareDB():
 				"Accept-Ancoding": "gzip, deflate",
 				"Accept-Aanguage": "zh-CN,zh;q=0.9"
 				}
-
-		for index in range (1, 150):
+		page = 1
+		while True:
 			for _ in range(retry_count):
 				try:
 					html = None
 					table = None
-					url = url_tmp + "&page=%s" % (index)
+					url = url_tmp + "&page=%s" % (page)
 					logging.debug(url)
 					req = Request(url, headers = header)
 					html = urlopen(req, timeout=10).read().decode('GBK')
 					if html != None:
 						bsObj = BeautifulSoup(html,"html.parser")
-						table = bsObj.findAll("table")[0] if bsObj.findAll("table") != [] else None
+						table = bsObj.findAll("table", {"class":"datatbl"})[0] if bsObj.findAll("table") != [] else None
 						if table != None:
 							break
 				except:
@@ -267,13 +267,17 @@ class ShareDB():
 
 			rows = table.findAll("tr")
 			if len(rows) == 1:
-				break
+				if page == 1 and url_tmp.startswith("http://market"):
+					url_tmp = "http://vip.stock.finance.sina.com.cn/quotes_service/view/vMS_tradehistory.php?symbol=%s&date=%s" % (symbol, date)
+					continue
+				else:
+					break
 			try:
 				for row in rows:
 					csvRow = []
 					for cell in row.findAll(['td','th']):
 						text = cell.get_text()
-						if index == 1:
+						if page == 1:
 							csvRow.append(text.replace(",", ""))
 						else:
 							if text not in ["成交时间", "成交价", "价格变动", "成交量(手)", "成交额(元)", "性质"]:
@@ -281,7 +285,9 @@ class ShareDB():
 					if csvRow:
 						writer.writerow(csvRow)
 			except:
-				pass
+				logging.error("write csv fail")
+				trace_log()
+			page = page + 1
 			time.sleep(1)
 
 		csvFile.close()
