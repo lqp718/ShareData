@@ -233,7 +233,7 @@ class ShareDB():
 
 		csvFile = open(csv_file,'a+',newline='', encoding='GBK')
 		writer = csv.writer(csvFile)
-		header = {"Host": "market.finance.sina.com.cn",
+		header = {
 				"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36",
 				"Connection": "keep-alive",
 				"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
@@ -268,20 +268,31 @@ class ShareDB():
 			rows = table.findAll("tr")
 			if len(rows) == 1:
 				if page == 1 and url_tmp.startswith("http://market"):
+					logging.debug("can't get tick data from http://market.finance.sina.com.cn try http://vip.stock.finance.sina.com.cn")
 					url_tmp = "http://vip.stock.finance.sina.com.cn/quotes_service/view/vMS_tradehistory.php?symbol=%s&date=%s" % (symbol, date)
 					continue
 				else:
+					break
+			elif len(rows) == 2:
+				row = rows[1]
+				if list(filter(lambda x: x.get_text() == "该股票没有交易数据", row.findAll(['td','th']))):
 					break
 			try:
 				for row in rows:
 					csvRow = []
 					for cell in row.findAll(['td','th']):
 						text = cell.get_text()
+						if text in ["-100.00%"]:
+							csvRow = []
+							break
 						if page == 1:
-							csvRow.append(text.replace(",", ""))
+							if text not in ["涨跌幅"]:
+								if "%" not in text:
+									csvRow.append(text.replace(",", ""))
 						else:
-							if text not in ["成交时间", "成交价", "价格变动", "成交量(手)", "成交额(元)", "性质"]:
-								csvRow.append(text.replace(",", ""))
+							if text not in ["成交时间", "成交价", "涨跌幅", "价格变动", "成交量(手)", "成交额(元)", "性质"]:
+								if "%" not in text:
+									csvRow.append(text.replace(",", ""))
 					if csvRow:
 						writer.writerow(csvRow)
 			except:
@@ -434,6 +445,7 @@ if __name__ == '__main__':
 	logging.getLogger().addHandler(console_logger)
 
 	Share = ShareDB()
+	Share.Get_Tick_Data("600050", date="2018-08-06", retry_count=3, pause=4)
 	# Share.GetStockInfo()
 	# Share.GetBasicInfomation(year = 2015)
 	# Share.GetHistoryData(sharecode = "600050", startdate = "2015-01-05")
