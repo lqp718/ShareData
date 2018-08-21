@@ -13,11 +13,22 @@ start_time = datetime.datetime.now()
 
 total_ip = 0
 
+exit = False
+
 def get_proxy_list(count = 1, retry = 3):
     global start_time
     global total_ip
+    global exit
+    ip_l = []
+    proxy_l = []
+
     if count > 10:
         count = 10
+
+    if exit:
+        for _ in range(count):
+            proxy_l.append("exit")
+        return proxy_l
 
     total_ip = total_ip + count
     header = {#"Host": "www.xicidaili.com",
@@ -27,8 +38,6 @@ def get_proxy_list(count = 1, retry = 3):
             "Accept-Ancoding": "gzip, deflate",
             "Accept-Aanguage": "zh-CN,zh;q=0.9"
             }
-    ip_l = []
-    proxy_l = []
     opener = urllib.request.build_opener()
     urllib.request.install_opener(opener)
     #for page in random.sample(range (1, 6), 5):
@@ -36,20 +45,22 @@ def get_proxy_list(count = 1, retry = 3):
         #logging.debug("get IP from page %d" % (page))
         #req = Request("http://www.xicidaili.com/wt/%d" % (page), headers = header)
         try:
+            #req = Request("http://http.tiqu.qingjuhe.cn/getip?num=%d&type=1&pro=&city=0&yys=0&port=1&pack=19139&ts=0&ys=0&cs=0&lb=1&sb=0&pb=4&mr=0&regions=" % (count), headers = header)
             req = Request("http://http.tiqu.qingjuhe.cn/getip?num=%d&type=1&pro=&city=0&yys=0&port=1&pack=19610&ts=0&ys=0&cs=0&lb=1&sb=0&pb=4&mr=0&regions=" % (count), headers = header)
             lines = urlopen(req, timeout=10).read().decode('utf-8')
             if "您的套餐今日已到达上限" in lines:
                 logging.debug("今日已到达上限")
                 end_time = datetime.datetime.now()
                 logging.debug("共用时 %ds 共获取 %d IP" % ((end_time - start_time).seconds, total_ip))
-                today = datetime.date.today()
-                while True:
-                    tomorrow = datetime.date.today()
-                    if (tomorrow - today).days == 1:
-                        logging.debug("New days begin!!!")
-                        start_time = datetime.datetime.now()
-                        break
-                    time.sleep(3600)
+                # today = datetime.date.today()
+                # while True:
+                #     tomorrow = datetime.date.today()
+                #     if (tomorrow - today).days == 1:
+                #         logging.debug("New days begin!!!")
+                #         start_time = datetime.datetime.now()
+                #         break
+                #     time.sleep(3600)
+                exit = True
                 break
             # pattern=re.compile(r'<td>(\d.*?\d)</td>')
             # ip_page=re.findall(pattern,str("".join(lines.split())))
@@ -64,17 +75,26 @@ def get_proxy_list(count = 1, retry = 3):
     #     proxy_host = ip_l[i]+':'+ip_l[i+1]
     #     proxy_temp = {"http":proxy_host}
     #     proxy_l.append(proxy_temp)
-    for proxy_host in ip_l:
-        if proxy_host != "":
-            proxy_temp = {"http":proxy_host}
-            proxy_l.append(proxy_temp)
+    if exit:
+        for _ in range(count):
+            proxy_l.append("exit")
+        return proxy_l
+    else:
+        for proxy_host in ip_l:
+            if proxy_host != "":
+                proxy_temp = {"http":proxy_host}
+                proxy_l.append(proxy_temp)
 
-    logging.debug("collected IP count \n%d" % (len(proxy_l)))
-    return proxy_l
+        logging.debug("collected IP count \n%d" % (len(proxy_l)))
+        return proxy_l
 
 def mp_thread_test(proxys):
+    global exit
     proxy_ip=[]
     lock=threading.Lock()
+
+    if exit:
+        return proxys
 
     def test(proxy):
         socket.setdefaulttimeout(10)

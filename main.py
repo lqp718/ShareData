@@ -52,6 +52,9 @@ def stockdb_task(stocklist = [], process_id = 0, proxy_queue = None, proxy_reque
     proxy_request.put("1")
     proxy = proxy_queue.get()
     proxy_request.get()
+    if proxy == "exit":
+        logging.debug("No proxy, the package has reached the limit today, exit progres")
+        return 0
     proxy_support = ProxyHandler(proxy)
     opener = build_opener(cookie_support, proxy_support)
     install_opener(opener)
@@ -62,6 +65,9 @@ def stockdb_task(stocklist = [], process_id = 0, proxy_queue = None, proxy_reque
             proxy_request.put("1")
             proxy = proxy_queue.get()
             proxy_request.get()
+            if proxy == "exit":
+                logging.debug("No proxy, the package has reached the limit today exit progres")
+                return 0
             logging.error("update proxy %s" % (proxy))
             proxy_support = ProxyHandler(proxy)
             opener = build_opener(cookie_support, proxy_support)
@@ -88,7 +94,7 @@ def update_proxy(proxy_queue, proxy_request, event):
 
 if __name__ == '__main__':
     stock_list = get_stock_list()
-    splited_list = split_stock_list(s_list = stock_list, split = 100)
+    splited_list = split_stock_list(s_list = stock_list, split = 30)
 
     q_1 = mp.Queue()
     q_2 = mp.Queue()

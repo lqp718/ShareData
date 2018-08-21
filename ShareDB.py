@@ -224,7 +224,7 @@ class ShareDB():
 	def Get_Tick_Data(self, code=None, date=None, retry_count=3, pause=0.001):
 		symbol = ct._code_to_symbol(code)
 		url_tmp = "http://market.finance.sina.com.cn/transHis.php?symbol=%s&date=%s" % (symbol, date)
-		csn_path = os.path.join("csv", symbol)
+		csn_path = os.path.join("E:","ShareCSV","csv", symbol)
 		if not os.path.exists(csn_path):
 			os.makedirs(csn_path)
 		csv_file = os.path.join(csn_path, date + "_tick.csv")
@@ -252,7 +252,7 @@ class ShareDB():
 					html = urlopen(req, timeout=10).read().decode('GBK')
 					if html != None:
 						bsObj = BeautifulSoup(html,"html.parser")
-						table = bsObj.findAll("table", {"class":"datatbl"})[0] if bsObj.findAll("table") != [] else None
+						table = bsObj.findAll("table", {"class":"datatbl"})[0] if bsObj.findAll("table", {"class":"datatbl"}) != [] else None
 						if table != None:
 							break
 				except:
@@ -445,7 +445,7 @@ if __name__ == '__main__':
 	logging.getLogger().addHandler(console_logger)
 
 	Share = ShareDB()
-	Share.Get_Tick_Data("600050", date="2018-08-06", retry_count=3, pause=4)
+	Share.Get_Tick_Data("000012", date="2018-07-18", retry_count=3, pause=4)
 	# Share.GetStockInfo()
 	# Share.GetBasicInfomation(year = 2015)
 	# Share.GetHistoryData(sharecode = "600050", startdate = "2015-01-05")
@@ -457,7 +457,7 @@ if __name__ == '__main__':
 	# 	if df is not None and len(df) != 0:
 	# 		print(json.loads(df.to_json(orient = "records"))[0])
 
-	df = ts.get_k_data("600050", start = "2015-01-05", autype = None, retry_count=10, pause=4)
+	df = ts.get_k_data("000012", start = "2018-07-18", autype = None, retry_count=10, pause=4)
 	print (df)
 	# print (ts.get_profit_data(2015,1))
 #Test code<<<
