@@ -46,7 +46,7 @@ def get_proxy_list(count = 1, retry = 3):
         #req = Request("http://www.xicidaili.com/wt/%d" % (page), headers = header)
         try:
             #req = Request("http://http.tiqu.qingjuhe.cn/getip?num=%d&type=1&pro=&city=0&yys=0&port=1&pack=19139&ts=0&ys=0&cs=0&lb=1&sb=0&pb=4&mr=0&regions=" % (count), headers = header)
-            req = Request("http://http.tiqu.qingjuhe.cn/getip?num=%d&type=1&pro=&city=0&yys=0&port=1&pack=19610&ts=0&ys=0&cs=0&lb=1&sb=0&pb=4&mr=0&regions=" % (count), headers = header)
+            req = Request("http://http.tiqu.qingjuhe.cn/getip?num=%d&type=1&pro=&city=0&yys=0&port=1&pack=20661&ts=0&ys=0&cs=0&lb=1&sb=0&pb=4&mr=0&regions=" % (count), headers = header)
             lines = urlopen(req, timeout=10).read().decode('utf-8')
             if "您的套餐今日已到达上限" in lines:
                 logging.debug("今日已到达上限")
@@ -85,7 +85,7 @@ def get_proxy_list(count = 1, retry = 3):
                 proxy_temp = {"http":proxy_host}
                 proxy_l.append(proxy_temp)
 
-        logging.debug("collected IP count \n%d" % (len(proxy_l)))
+        logging.debug("collected IP count %d" % (len(proxy_l)))
         return proxy_l
 
 def mp_thread_test(proxys):

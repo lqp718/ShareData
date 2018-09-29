@@ -341,26 +341,33 @@ class ShareDB():
 		except:
 			date = datetime.datetime.strptime(startdate, "%Y-%m-%d")
 
-		for _ in range(3):
-			k_df = None
-			try:
-				k_df = ts.get_k_data(sharecode, start=date.strftime("%Y-%m-%d"), autype = None, retry_count=10, pause=4)
-			except:
-				logging.error("Exception!!! get_k_data fail")
-				trace_log()
-				yield 1
-			if k_df is not None and len(k_df) != 0:
+		if date.strftime("%Y-%m-%d") >= datetime.datetime.today().strftime("%Y-%m-%d"):
+			logging.info("All the share data were collected, exit the collection progress!")
+			StockDB.logout()
+			return 0
+
+		base = date
+		k_df = None
+		days = (datetime.datetime.now() - date).days
+		date_list = [base + datetime.timedelta(days=x) for x in range(0, days + 1)]
+		for day in date_list:
+			if self.isTradeDay(day.strftime('%Y-%m-%d')):
+				for _ in range(3):
+					k_df = None
+					try:
+						k_df = ts.get_k_data(sharecode, start=date.strftime("%Y-%m-%d"), autype = None, retry_count=5, pause=4)
+					except:
+						logging.error("Exception!!! get_k_data fail")
+						trace_log()
+						yield 1
+					if k_df is not None and len(k_df) != 0:
+						break
+					time.sleep(random.uniform(1, 5))
 				break
-			time.sleep(random.uniform(1, 5))
 
 		if k_df is None or len(k_df) == 0:
-			base = date
-			days = (datetime.datetime.now() - date).days
-			date_list = [base + datetime.timedelta(days=x) for x in range(0, days + 1)]
-			for day in date_list:
-				if self.isTradeDay(day.strftime('%Y-%m-%d')):
-					logging.error("！！！k_df is None, skip this stock")
-					break
+			logging.error("！！！k_df is None, skip this stock")
+			StockDB.logout()
 			return 0
 
 		while not self.stop(event):
@@ -444,8 +451,8 @@ if __name__ == '__main__':
 	console_logger.setFormatter(logging.Formatter("%(message)s"))
 	logging.getLogger().addHandler(console_logger)
 
-	Share = ShareDB()
-	Share.Get_Tick_Data("000012", date="2018-07-18", retry_count=3, pause=4)
+	# Share = ShareDB()
+	# Share.Get_Tick_Data("000012", date="2018-07-18", retry_count=3, pause=4)
 	# Share.GetStockInfo()
 	# Share.GetBasicInfomation(year = 2015)
 	# Share.GetHistoryData(sharecode = "600050", startdate = "2015-01-05")
@@ -457,7 +464,7 @@ if __name__ == '__main__':
 	# 	if df is not None and len(df) != 0:
 	# 		print(json.loads(df.to_json(orient = "records"))[0])
 
-	df = ts.get_k_data("000012", start = "2018-07-18", autype = None, retry_count=10, pause=4)
-	print (df)
+	df = ts.get_k_data("600145", start = "2018-01-05", autype = None, retry_count=10, pause=4)
+	print (len(df))
 	# print (ts.get_profit_data(2015,1))
 #Test code<<<

@@ -12,6 +12,11 @@ from Database import DB
 from IpPool.ip import get_proxy
 from urllib.request import HTTPCookieProcessor, build_opener, install_opener, ProxyHandler
 
+date_dir = datetime.datetime.now().strftime("%Y%m%d")
+log_path = os.path.join("log", date_dir)
+if not os.path.exists(log_path):
+    os.makedirs(log_path)
+
 def get_stock_list():
     db = DB("MyShare", "Stockinfo")
     i, result = db.find(_filter = {})
@@ -33,16 +38,13 @@ def split_stock_list(s_list = None, split = 10):
 def stockdb_task(stocklist = [], process_id = 0, proxy_queue = None, proxy_request = None):
     log_file = "./log/ShareDB.log"
 
-    date_dir = datetime.datetime.now().strftime("%Y%m%d")
-    log_path = os.path.join("log", date_dir)
-    if not os.path.exists(log_path):
-        os.makedirs(log_path)
+    global log_path
     baseFilename = os.path.join(log_path, "ShareDB_%s.log" % (process_id))
 
     console_logger = logging.FileHandler(filename = log_file, mode = 'a', encoding="utf-8", delay=True)
     logging.getLogger().setLevel(logging.DEBUG)
     console_logger.setLevel(logging.NOTSET)
-    console_logger.setFormatter(logging.Formatter("%(message)s"))
+    console_logger.setFormatter(logging.Formatter("%(asctime)s: %(message)s"))
     logging.getLogger().addHandler(console_logger)
     logging.getLogger().handlers[0].baseFilename = baseFilename
     Share = ShareDB()
@@ -75,11 +77,12 @@ def stockdb_task(stocklist = [], process_id = 0, proxy_queue = None, proxy_reque
         #logging.getLogger().handlers[0].close()
 
 def update_proxy(proxy_queue, proxy_request, event):
-    log_file = "./log/proxy.log"
+    global log_path
+    log_file = os.path.join(log_path, "_proxy.log")
     console_logger = logging.FileHandler(filename = log_file, mode = 'a', encoding="utf-8", delay=True)
     logging.getLogger().setLevel(logging.DEBUG)
     console_logger.setLevel(logging.NOTSET)
-    console_logger.setFormatter(logging.Formatter("%(message)s"))
+    console_logger.setFormatter(logging.Formatter("%(asctime)s: %(message)s"))
     logging.getLogger().addHandler(console_logger)
 
     while event.is_set():
@@ -93,8 +96,9 @@ def update_proxy(proxy_queue, proxy_request, event):
         time.sleep(10)
 
 if __name__ == '__main__':
+    start_time = datetime.datetime.now()
     stock_list = get_stock_list()
-    splited_list = split_stock_list(s_list = stock_list, split = 30)
+    splited_list = split_stock_list(s_list = stock_list, split = 100)
 
     q_1 = mp.Queue()
     q_2 = mp.Queue()
@@ -114,11 +118,11 @@ if __name__ == '__main__':
         procs.append(proc)
     for p in procs:
         p.start()
+        time.sleep(5)
     for p in procs:
         p.join()
 
     do_update_proxy.clear()
-
-
-
-    
+    end_time = datetime.datetime.now()
+    print ((end_time - start_time).seconds)
+    os.system("shutdown -s -t 60")
