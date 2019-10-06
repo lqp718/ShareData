@@ -11,6 +11,7 @@ import operator
 import csv
 import os
 
+from pandas.compat import StringIO
 from urllib.request import urlopen, Request
 from bs4 import BeautifulSoup
 from bson.objectid import ObjectId
@@ -222,15 +223,58 @@ class ShareDB():
 				start_year = year
 
 	def Get_Tick_Data(self, code=None, date=None, retry_count=3, pause=0.001):
+		def get_tick_data(csv=None, code=None, date=None, retry_count=3, pause=0.001,
+		                  src='tt'):
+			symbol = ct._code_to_symbol(code)
+			datestr = date.replace('-', '')
+			url = {
+			        "tt" : ct.TICK_PRICE_URL_TT % (ct.P_TYPE['http'], ct.DOMAINS['tt'], ct.PAGES['idx'],
+			                                       symbol, datestr),
+			      }
+			for _ in range(retry_count):
+				try:
+					header = {
+							"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36",
+							"Connection": "keep-alive",
+							"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+							"Accept-Ancoding": "gzip, deflate",
+							"Accept-Aanguage": "zh-CN,zh;q=0.9"
+							}
+					print(url[src])
+					re = Request(url[src], headers = header)
+					lines = urlopen(re, timeout=10).read()
+					lines = lines.decode('GBK')
+					if len(lines) < 20:
+					    return None
+					pd.read_table(StringIO(lines)).to_csv(csv, encoding='GBK', index=False)
+					df = pd.read_table(StringIO(lines), names=ct.TICK_COLUMNS,
+					                   skiprows=[0]) 
+				except Exception as e:
+					trace_log()
+					time.sleep(pause)
+				else:
+				    return df
+			raise IOError(ct.NETWORK_URL_ERROR_MSG)
+
 		symbol = ct._code_to_symbol(code)
-		url_tmp = "http://market.finance.sina.com.cn/transHis.php?symbol=%s&date=%s" % (symbol, date)
-		csn_path = os.path.join("E:","ShareCSV","csv", symbol)
-		if not os.path.exists(csn_path):
-			os.makedirs(csn_path)
-		csv_file = os.path.join(csn_path, date + "_tick.csv")
+		csv_path = os.path.join("E:","ShareCSV","csv", symbol)
+		if not os.path.exists(csv_path):
+			os.makedirs(csv_path)
+		csv_file = os.path.join(csv_path, date + "_tick.csv")
 		if os.path.exists(csv_file):
 			os.remove(csv_file)
 
+		try:
+			logging.debug("Get data from TT frist")
+			df = get_tick_data(csv_file, code, date, retry_count, pause)
+			if df is not None:
+				time.sleep(random.uniform(1, 5))
+				return (df)
+		except:
+			pass
+
+		logging.error("Cannot get data from TT try sina")
+		url_tmp = "http://market.finance.sina.com.cn/transHis.php?symbol=%s&date=%s" % (symbol, date)
 		csvFile = open(csv_file,'a+',newline='', encoding='GBK')
 		writer = csv.writer(csvFile)
 		header = {
@@ -299,7 +343,7 @@ class ShareDB():
 				logging.error("write csv fail")
 				trace_log()
 			page = page + 1
-			time.sleep(1)
+			time.sleep(random.uniform(1, 3))
 
 		csvFile.close()
 		df = pd.read_csv(csv_file, names = ['time', 'price', 'change', 'volume', 'amount', 'type'],
@@ -324,7 +368,6 @@ class ShareDB():
 			"fail_list": None
 		}
 
-		# i = 0
 		count = 0
 		try:
 			count, result = StockDB.find(_filter = {"type": "Record"})
@@ -341,6 +384,7 @@ class ShareDB():
 		except:
 			date = datetime.datetime.strptime(startdate, "%Y-%m-%d")
 
+		logging.debug("last_success date is %s" % (date))
 		if date.strftime("%Y-%m-%d") >= datetime.datetime.today().strftime("%Y-%m-%d"):
 			logging.info("All the share data were collected, exit the collection progress!")
 			StockDB.logout()
@@ -355,7 +399,9 @@ class ShareDB():
 				for _ in range(3):
 					k_df = None
 					try:
+						logging.debug("getting k data start >>>")
 						k_df = ts.get_k_data(sharecode, start=date.strftime("%Y-%m-%d"), autype = None, retry_count=5, pause=4)
+						logging.debug("getting k data end <<<")
 					except:
 						logging.error("Exception!!! get_k_data fail")
 						trace_log()
@@ -366,7 +412,7 @@ class ShareDB():
 				break
 
 		if k_df is None or len(k_df) == 0:
-			logging.error("！！！k_df is None, skip this stock")
+			logging.error("!!! k_df is None, skip this stock")
 			StockDB.logout()
 			return 0
 
@@ -393,7 +439,7 @@ class ShareDB():
 					# 	logging.debug("Get K_qfq data fail")
 
 					#获取历史分笔数据
-					df = self.Get_Tick_Data(sharecode, date=date.strftime("%Y-%m-%d"), retry_count=3, pause=4)
+					df = self.Get_Tick_Data(sharecode, date=date.strftime("%Y-%m-%d"), retry_count=3, pause=60)
 					if len(df) > 3: # src = "sn"
 						logging.debug("Getting tick data successful")
 						SortDf = df.sort_values(by = 'time', axis = 0, ascending = True)#.sort_index(ascending=False,inplace=False)
@@ -425,12 +471,6 @@ class ShareDB():
 					logging.info("No k_data, pass")
 
 				date = date + delta
-
-				#每收集10次数据延迟5秒
-				# i = i + 1
-				# if i == 10:
-				# 	i = 0
-				# 	time.sleep(10)
 			except:
 				logging.error("Exception!!! Get_Tick_Data fail")
 				trace_log()
@@ -451,11 +491,12 @@ if __name__ == '__main__':
 	console_logger.setFormatter(logging.Formatter("%(message)s"))
 	logging.getLogger().addHandler(console_logger)
 
-	# Share = ShareDB()
+	Share = ShareDB()
 	# Share.Get_Tick_Data("000012", date="2018-07-18", retry_count=3, pause=4)
 	# Share.GetStockInfo()
 	# Share.GetBasicInfomation(year = 2015)
-	# Share.GetHistoryData(sharecode = "600050", startdate = "2015-01-05")
+	# for i in Share.GetHistoryData(sharecode = "600050", startdate = "2015-01-05"):
+	# 	pass
 	# qfq_df = ts.get_k_data("603713", start="2015-01-05", autype = None, retry_count=10, pause=4)
 	# print (qfq_df)
 	# if qfq_df is not None and len(qfq_df) != 0:
@@ -464,7 +505,8 @@ if __name__ == '__main__':
 	# 	if df is not None and len(df) != 0:
 	# 		print(json.loads(df.to_json(orient = "records"))[0])
 
-	df = ts.get_k_data("600145", start = "2018-01-05", autype = None, retry_count=10, pause=4)
+	# df = ts.get_k_data("600145", start = "2018-01-05", autype = None, retry_count=10, pause=4)
+	df = ts.get_tick_data(code = "300048", date = "2018-01-05", src='tt')
 	print (len(df))
 	# print (ts.get_profit_data(2015,1))
 #Test code<<<
