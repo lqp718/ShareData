@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import config as cfg
-import tushare as ts
+import akshare as ak
 import pandas as pd
 import datetime
 import time
@@ -11,16 +11,15 @@ import operator
 import csv
 import os
 
-from pandas.compat import StringIO
+from io import StringIO
 from urllib.request import urlopen, Request
 from bs4 import BeautifulSoup
 from bson.objectid import ObjectId
 from error import trace_log
 from Database import DB
-from tushare.stock import cons as ct
 
 class ShareDB():
-	def __init__(self, db = "MyShare", output = None):
+	def __init__(self, db = "my_stock", output = None):
 		self.Output = output
 		self.StopOutput = False
 		self._db = db
@@ -54,86 +53,24 @@ class ShareDB():
 				self.StopOutput = True
 				return True
 
-	def GetStockInfo(self):
-		StockInfoDB = DB(db = self._db, col = "Stockinfo")
-		doc = { "_id" : None,
-				"code" : None,
-				"name" : None,
-				"timeToMarket": None,
-				"basics": [],
-				"report": [],
-				"profit": [],
-				"growth": [],
-				}
-		basics_doc = {"CollectDate": None,
-					#
-					# Other key : value will be inster dynamiclly 
-					#	
-				}
+	def UpdateStockInfo(self, force=False):
+		StockListDB = DB(db = self._db, col = "stock_list")
 
-		df = ts.get_stock_basics()
-		basics_clm = [ "name",#股票名称
-				"pe", #市盈率
-				"outstanding",#流通股本(亿)
-				"totals",#总股本(亿)
-				"totalAssets",#总资产(万)
-				"liquidAssets",#流动资产
-				"fixedAssets",#固定资产
-				"reserved",#公积金
-				"reservedPerShare",#每股公积金
-				"esp",#每股收益
-				"bvps",#每股净资
-				"pb",#市净率
-				"timeToMarket",#上市日期
-				"undp",#未分利润
-				"perundp",#每股未分配
-				"rev",#收入同比(%)
-				"profit",#利润同比(%)
-				"gpr",#毛利率(%)
-				"npr",#净利润率(%)
-				"holders"#股东人数
-				]
-
-		# Record_doc = {
-		# 		"type": "StockInfo",
-		# 		"last_success_quarter": None,
-		# }
-		for index in df.index:
-			i, result = StockInfoDB.find(_filter = {"code": index})
-			if i == 0:
-				doc["code"] = str(index)
-				doc["_id"] = ObjectId()
-				today = datetime.datetime.now().strftime('%Y-%m-%d')
-				basics_doc["CollectDate"] = datetime.datetime.strptime(today, "%Y-%m-%d")
-				for cl in basics_clm:
-					if cl == "timeToMarket":
-						try:
-							doc["timeToMarket"] = datetime.datetime.strptime(str(df.loc[index]["timeToMarket"]), "%Y%m%d")
-						except:
-							break
-					elif cl == "name":
-						doc["name"] = df.loc[index]["name"]
-					else:
-						basics_doc[cl] = df.loc[index][cl]
-				doc["basics"] = []
-				doc["basics"].append(basics_doc)
-				StockInfoDB.insert_one(doc)
-				time.sleep(0.2)
+		if force:
+			stock_zh_a_spot_em_df = ak.stock_zh_a_spot()
+			stock_zh_a_spot_em_df.to_csv("stock_zh_a_spot_em.csv", index=False)
+		else:
+			if os.path.exists("stock_zh_a_spot_em.csv"):
+				stock_zh_a_spot_em_df = pd.read_csv("stock_zh_a_spot_em.csv")
 			else:
-				today = datetime.datetime.now().strftime('%Y-%m-%d')
-				for cl in basics_clm:
-					if cl not in ["timeToMarket", "name"]:
-						basics_doc[cl] = df.loc[index][cl]
+				stock_zh_a_spot_em_df = ak.stock_zh_a_spot()
+				stock_zh_a_spot_em_df.to_csv("stock_zh_a_spot_em.csv", index=False)
 
-				tmp_basics = result[0]["basics"]
-				for i in range(0, len(tmp_basics)):
-					tmp_basics[i]["CollectDate"] = None
-				basics_doc["CollectDate"] = None
-
-				if basics_doc not in tmp_basics:
-					basics_doc["CollectDate"] = datetime.datetime.strptime(today, "%Y-%m-%d")
-					StockInfoDB.update(_filter = {"code": index}, _update = {"$push": {"basics": basics_doc}})
-					time.sleep(0.2)
+		for doc in json.loads(stock_zh_a_spot_em_df[['代码', '名称']].to_json(orient='records')):
+			i, result = StockListDB.find(_filter = {"代码": doc['代码']})
+			if i == 0:
+				doc["_id"] = ObjectId()
+				StockListDB.insert_one(doc)
 
 	def GetBasicInfomation(self, year = None, quarter = None, retry = 3):
 		def template(db = None, y = None, q = None, fun = None, k = None, doc = None):
@@ -350,12 +287,12 @@ class ShareDB():
 		                   skiprows=[0], encoding = "GBK")
 		return (df)
 
-	def GetHistoryData(self, sharecode = None, startdate = None, event = None):
+	def GetHistoryData(self, stock = None, start_date = None, event = None):
 		delta = datetime.timedelta(days=1)
-		StockDB = DB(db = "MyShare_Tick", col = sharecode)
-		logging.info("Getting historyData for %s" % (sharecode))
+		StockDB = DB(db = self._db, col = stock)
+		logging.info("Getting historyData for %s" % (stock))
 
-		Share_doc = {
+		stock_doc = {
 		"_id": None,
 		"date": None,
 		"k_data": None,
@@ -374,7 +311,7 @@ class ShareDB():
 			if count != 0:
 				date = result[0]["last_success"] + delta
 			else:
-				date = datetime.datetime.strptime(startdate, "%Y-%m-%d")
+				date = datetime.datetime.strptime(start_date, "%Y-%m-%d")
 				#
 				# Don't have the record data create one
 				#
@@ -382,7 +319,7 @@ class ShareDB():
 				HistDataRec_doc['fail_list'] = []
 				StockDB.insert_one(HistDataRec_doc)
 		except:
-			date = datetime.datetime.strptime(startdate, "%Y-%m-%d")
+			date = datetime.datetime.strptime(start_date, "%Y-%m-%d")
 
 		logging.debug("last_success date is %s" % (date))
 		if date.strftime("%Y-%m-%d") >= datetime.datetime.today().strftime("%Y-%m-%d"):
@@ -483,15 +420,16 @@ class ShareDB():
 if __name__ == '__main__':
 	log_file = "ShareDB.log"
 	logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,
         format="%(message)s",
         filename=log_file)
 	console_logger = logging.StreamHandler()
-	console_logger.setLevel(logging.DEBUG)
+	console_logger.setLevel(logging.INFO)
 	console_logger.setFormatter(logging.Formatter("%(message)s"))
 	logging.getLogger().addHandler(console_logger)
 
 	Share = ShareDB()
+	Share.UpdateStockInfo()
 	# Share.Get_Tick_Data("000012", date="2018-07-18", retry_count=3, pause=4)
 	# Share.GetStockInfo()
 	# Share.GetBasicInfomation(year = 2015)
@@ -506,7 +444,5 @@ if __name__ == '__main__':
 	# 		print(json.loads(df.to_json(orient = "records"))[0])
 
 	# df = ts.get_k_data("600145", start = "2018-01-05", autype = None, retry_count=10, pause=4)
-	df = ts.get_tick_data(code = "300048", date = "2018-01-05", src='tt')
-	print (len(df))
 	# print (ts.get_profit_data(2015,1))
 #Test code<<<

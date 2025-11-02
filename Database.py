@@ -10,7 +10,7 @@ import pprint
 
 class DB():
 	def __init__(self, db, col, host=None, port=None,):
-		self.conn = MongoClient(host = "10.240.216.66", port = port)
+		self.conn = MongoClient(host = "localhost", port = 27017)
 		self.db = self.conn[db]
 		self.Collection = self.db.get_collection(name = col)
 		if self.Collection is None:
