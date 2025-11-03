@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import re
 import config as cfg
 import akshare as ak
 import pandas as pd
@@ -13,7 +14,7 @@ import os
 
 from io import StringIO
 from urllib.request import urlopen, Request
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, element
 from bson.objectid import ObjectId
 from error import trace_log
 from Database import DB
@@ -57,13 +58,13 @@ class ShareDB():
 		StockListDB = DB(db = self._db, col = "stock_list")
 
 		if force:
-			stock_zh_a_spot_em_df = ak.stock_zh_a_spot()
+			stock_zh_a_spot_em_df = ak.stock_zh_a_spot_em()
 			stock_zh_a_spot_em_df.to_csv("stock_zh_a_spot_em.csv", index=False)
 		else:
 			if os.path.exists("stock_zh_a_spot_em.csv"):
-				stock_zh_a_spot_em_df = pd.read_csv("stock_zh_a_spot_em.csv")
+				stock_zh_a_spot_em_df = pd.read_csv("stock_zh_a_spot_em.csv", dtype={'代码': str})
 			else:
-				stock_zh_a_spot_em_df = ak.stock_zh_a_spot()
+				stock_zh_a_spot_em_df = ak.stock_zh_a_spot_em()
 				stock_zh_a_spot_em_df.to_csv("stock_zh_a_spot_em.csv", index=False)
 
 		for doc in json.loads(stock_zh_a_spot_em_df[['代码', '名称']].to_json(orient='records')):
@@ -287,7 +288,7 @@ class ShareDB():
 		                   skiprows=[0], encoding = "GBK")
 		return (df)
 
-	def GetHistoryData(self, stock = None, start_date = None, event = None):
+	def GetHistoryData(self, stock = "", start_date = "", event = None):
 		delta = datetime.timedelta(days=1)
 		StockDB = DB(db = self._db, col = stock)
 		logging.info("Getting historyData for %s" % (stock))
@@ -296,6 +297,8 @@ class ShareDB():
 		"_id": None,
 		"date": None,
 		"k_data": None,
+		"k_data_qfq": None,
+		"k_data_hfq": None,
 		"tick": None
 		}
 
@@ -311,7 +314,7 @@ class ShareDB():
 			if count != 0:
 				date = result[0]["last_success"] + delta
 			else:
-				date = datetime.datetime.strptime(start_date, "%Y-%m-%d")
+				date = datetime.datetime.strptime(start_date, "%Y%m%d")
 				#
 				# Don't have the record data create one
 				#
@@ -319,100 +322,57 @@ class ShareDB():
 				HistDataRec_doc['fail_list'] = []
 				StockDB.insert_one(HistDataRec_doc)
 		except:
-			date = datetime.datetime.strptime(start_date, "%Y-%m-%d")
+			date = datetime.datetime.strptime(start_date, "%Y%m%d")
 
 		logging.debug("last_success date is %s" % (date))
-		if date.strftime("%Y-%m-%d") >= datetime.datetime.today().strftime("%Y-%m-%d"):
+		if date.strftime("%Y%m%d") >= datetime.datetime.today().strftime("%Y%m%d"):
 			logging.info("All the share data were collected, exit the collection progress!")
-			StockDB.logout()
 			return 0
 
-		base = date
-		k_df = None
-		days = (datetime.datetime.now() - date).days
-		date_list = [base + datetime.timedelta(days=x) for x in range(0, days + 1)]
-		for day in date_list:
-			if self.isTradeDay(day.strftime('%Y-%m-%d')):
-				for _ in range(3):
-					k_df = None
-					try:
-						logging.debug("getting k data start >>>")
-						k_df = ts.get_k_data(sharecode, start=date.strftime("%Y-%m-%d"), autype = None, retry_count=5, pause=4)
-						logging.debug("getting k data end <<<")
-					except:
-						logging.error("Exception!!! get_k_data fail")
-						trace_log()
-						yield 1
-					if k_df is not None and len(k_df) != 0:
-						break
-					time.sleep(random.uniform(1, 5))
-				break
+		today = datetime.datetime.today().strftime("%Y%m%d")
+		k_df = ak.stock_zh_a_hist(symbol=stock, period='daily', start_date=date.strftime("%Y%m%d"), end_date=today)
 
-		if k_df is None or len(k_df) == 0:
-			logging.error("!!! k_df is None, skip this stock")
-			StockDB.logout()
-			return 0
+		k_df.sort_values(["日期"], inplace=True, ignore_index=True)
 
-		while not self.stop(event):
-			if date.strftime("%Y-%m-%d") >= datetime.datetime.today().strftime("%Y-%m-%d"):
-				logging.info("All the share data were collected, exit the collection progress!")
-				break
+		k_qfq_df = ak.stock_zh_a_hist(symbol=stock, period='daily', start_date=date.strftime("%Y%m%d"), end_date=today, adjust='qfq')
+		k_hfq_df = ak.stock_zh_a_hist(symbol=stock, period='daily', start_date=date.strftime("%Y%m%d"), end_date=today, adjust='hfq')
+
+		k_df_array = json.loads(k_df.to_json(index=False, orient="records"))
+
+		for record in k_df_array:
 			try:
-				Share_doc['date'] = date
-				logging.info(Share_doc['date'])
-				df = k_df.loc[k_df["date"] == date.strftime("%Y-%m-%d")]
+				stock_doc['_id'] = ObjectId()
+				stock_doc['date'] = datetime.datetime.utcfromtimestamp(record['日期'] / 1000).date()
+				del record['日期']
+				del record['股票代码']
+				stock_doc['k_data'] = record
 
-				if df is not None and len(df) != 0:
-					logging.debug("Get K data successful")
-					Share_doc['_id'] = ObjectId()
-					Share_doc['k_data'] = json.loads(df.to_json(orient = "records"))[0]
-
-					#获取复权数据
-					# time.sleep(random.uniform(1, 10))
-					# qfq_df = ts.get_k_data(sharecode, start=date.strftime("%Y-%m-%d"), end=date.strftime("%Y-%m-%d"), retry_count=10, pause=4)
-					# if qfq_df is not None and len(qfq_df) != 0:
-					# 	Share_doc['k_data_qfq'] = json.loads(qfq_df.to_json(orient = "records"))[0]
-					# else:
-					# 	logging.debug("Get K_qfq data fail")
-
-					#获取历史分笔数据
-					df = self.Get_Tick_Data(sharecode, date=date.strftime("%Y-%m-%d"), retry_count=3, pause=60)
-					if len(df) > 3: # src = "sn"
-						logging.debug("Getting tick data successful")
-						SortDf = df.sort_values(by = 'time', axis = 0, ascending = True)#.sort_index(ascending=False,inplace=False)
-						SortDf.reset_index(drop = True, inplace = True)
-						SortDf['type'] = SortDf['type'].replace("买盘", 1).replace("卖盘", -1).replace("中性盘", 0)
-						SortDf['change'] = SortDf['change'].replace('--', '0').astype('float')
-						Share_doc['tick'] = json.loads(SortDf.to_json(orient = "index"))
-
-						#将获取到的数据插入数据库
-						InsertResult = StockDB.insert_one(Share_doc)
-						if InsertResult.acknowledged:
-							StockDB.update(_filter = {"type": "Record"}, _update = {"$set": {"last_success": date}})
-							logging.debug("Insert data successful ObjectId = %s" %(InsertResult.inserted_id))
-						else:
-							logging.error("Insert data to DB fail")
-							StockDB.update(_filter = {"type": "Record"}, _update = {"$push": {"fail_list": date}})
-						for k in Share_doc.keys():
-							Share_doc[k] = None
-					else:
-						# 获取数据失败，添加失败记录
-						logging.error("Getting tick data fail")
-						StockDB.insert_one(Share_doc)
-						StockDB.update(_filter = {"type": "Record"}, _update = {"$push": {"fail_list": date}})
-
-					time.sleep(random.uniform(1, 5))
-						
+				k_qfq_date_df = k_qfq_df[k_qfq_df["日期"] == stock_doc['date']]
+				if k_qfq_date_df.empty:
+					logging.warning(f"Cannot get qfq k data for {stock} in {stock_doc['date']}")
 				else:
-					StockDB.update(_filter = {"type": "Record"}, _update = {"$set": {"last_success": date}})
-					logging.info("No k_data, pass")
+					k_data_qfq = json.loads(k_qfq_date_df.to_json(index=False, orient="records"))
+					del k_data_qfq['日期']
+					del k_data_qfq['股票代码']
+					stock_doc['k_data_qfq'] = k_data_qfq
 
-				date = date + delta
+
+				k_hfq_date_df = k_hfq_df[k_hfq_df["日期"] == stock_doc['date']]
+				if k_hfq_date_df.empty:
+					logging.warning(f"Cannot get hfq k data for {stock} in {stock_doc['date']}")
+				else:
+					k_data_hfq = json.loads(k_hfq_date_df.to_json(index=False, orient="records"))
+					del k_data_hfq['日期']
+					del k_data_qfq['股票代码']
+					stock_doc['k_data_hfq'] = k_data_hfq
+
+				StockDB.insert_one(stock_doc)
+				StockDB.update(_filter = {"type": "Record"}, _update = {"$set": {"last_success": stock_doc['date']}})
 			except:
-				logging.error("Exception!!! Get_Tick_Data fail")
+				logging.error("Exception!!! GetHistoryData fail")
 				trace_log()
-				yield 1
-		StockDB.logout()
+
+			break
 		return 0
 
 
@@ -428,8 +388,12 @@ if __name__ == '__main__':
 	console_logger.setFormatter(logging.Formatter("%(message)s"))
 	logging.getLogger().addHandler(console_logger)
 
+	# stock_zh_a_hist_df = ak.stock_zh_a_hist(symbol="000001", period="daily", start_date="20170301", end_date='20240528', adjust="")
+	# print(stock_zh_a_hist_df)
+
 	Share = ShareDB()
-	Share.UpdateStockInfo()
+	Share.GetHistoryData(stock='000001', start_date='20150101')
+
 	# Share.Get_Tick_Data("000012", date="2018-07-18", retry_count=3, pause=4)
 	# Share.GetStockInfo()
 	# Share.GetBasicInfomation(year = 2015)
