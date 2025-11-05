@@ -58,14 +58,14 @@ class ShareDB():
 		StockListDB = DB(db = self._db, col = "stock_list")
 
 		if force:
-			stock_zh_a_spot_em_df = ak.stock_zh_a_spot_em()
-			stock_zh_a_spot_em_df.to_csv("stock_zh_a_spot_em.csv", index=False)
+			stock_zh_a_spot_em_df = ak.stock_zh_a_spot()
+			stock_zh_a_spot_em_df.to_csv("stock_zh_a_spot.csv", index=False)
 		else:
-			if os.path.exists("stock_zh_a_spot_em.csv"):
-				stock_zh_a_spot_em_df = pd.read_csv("stock_zh_a_spot_em.csv", dtype={'代码': str})
+			if os.path.exists("stock_zh_a_spot.csv"):
+				stock_zh_a_spot_em_df = pd.read_csv("stock_zh_a_spot.csv", dtype={'代码': str})
 			else:
-				stock_zh_a_spot_em_df = ak.stock_zh_a_spot_em()
-				stock_zh_a_spot_em_df.to_csv("stock_zh_a_spot_em.csv", index=False)
+				stock_zh_a_spot_em_df = ak.stock_zh_a_spot()
+				stock_zh_a_spot_em_df.to_csv("stock_zh_a_spot.csv", index=False)
 
 		for doc in json.loads(stock_zh_a_spot_em_df[['代码', '名称']].to_json(orient='records')):
 			i, result = StockListDB.find(_filter = {"代码": doc['代码']})
@@ -160,135 +160,7 @@ class ShareDB():
 			else:
 				start_year = year
 
-	def Get_Tick_Data(self, code=None, date=None, retry_count=3, pause=0.001):
-		def get_tick_data(csv=None, code=None, date=None, retry_count=3, pause=0.001,
-		                  src='tt'):
-			symbol = ct._code_to_symbol(code)
-			datestr = date.replace('-', '')
-			url = {
-			        "tt" : ct.TICK_PRICE_URL_TT % (ct.P_TYPE['http'], ct.DOMAINS['tt'], ct.PAGES['idx'],
-			                                       symbol, datestr),
-			      }
-			for _ in range(retry_count):
-				try:
-					header = {
-							"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36",
-							"Connection": "keep-alive",
-							"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
-							"Accept-Ancoding": "gzip, deflate",
-							"Accept-Aanguage": "zh-CN,zh;q=0.9"
-							}
-					print(url[src])
-					re = Request(url[src], headers = header)
-					lines = urlopen(re, timeout=10).read()
-					lines = lines.decode('GBK')
-					if len(lines) < 20:
-					    return None
-					pd.read_table(StringIO(lines)).to_csv(csv, encoding='GBK', index=False)
-					df = pd.read_table(StringIO(lines), names=ct.TICK_COLUMNS,
-					                   skiprows=[0]) 
-				except Exception as e:
-					trace_log()
-					time.sleep(pause)
-				else:
-				    return df
-			raise IOError(ct.NETWORK_URL_ERROR_MSG)
-
-		symbol = ct._code_to_symbol(code)
-		csv_path = os.path.join("E:","ShareCSV","csv", symbol)
-		if not os.path.exists(csv_path):
-			os.makedirs(csv_path)
-		csv_file = os.path.join(csv_path, date + "_tick.csv")
-		if os.path.exists(csv_file):
-			os.remove(csv_file)
-
-		try:
-			logging.debug("Get data from TT frist")
-			df = get_tick_data(csv_file, code, date, retry_count, pause)
-			if df is not None:
-				time.sleep(random.uniform(1, 5))
-				return (df)
-		except:
-			pass
-
-		logging.error("Cannot get data from TT try sina")
-		url_tmp = "http://market.finance.sina.com.cn/transHis.php?symbol=%s&date=%s" % (symbol, date)
-		csvFile = open(csv_file,'a+',newline='', encoding='GBK')
-		writer = csv.writer(csvFile)
-		header = {
-				"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36",
-				"Connection": "keep-alive",
-				"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
-				"Accept-Ancoding": "gzip, deflate",
-				"Accept-Aanguage": "zh-CN,zh;q=0.9"
-				}
-		page = 1
-		while True:
-			for _ in range(retry_count):
-				try:
-					html = None
-					table = None
-					url = url_tmp + "&page=%s" % (page)
-					logging.debug(url)
-					req = Request(url, headers = header)
-					html = urlopen(req, timeout=10).read().decode('GBK')
-					if html != None:
-						bsObj = BeautifulSoup(html,"html.parser")
-						table = bsObj.findAll("table", {"class":"datatbl"})[0] if bsObj.findAll("table", {"class":"datatbl"}) != [] else None
-						if table != None:
-							break
-				except:
-					trace_log()
-				time.sleep(pause)
-
-			if html is None:
-				csvFile.close()
-				raise IOError(ct.NETWORK_URL_ERROR_MSG)
-			if table is None:
-				break
-
-			rows = table.findAll("tr")
-			if len(rows) == 1:
-				if page == 1 and url_tmp.startswith("http://market"):
-					logging.debug("can't get tick data from http://market.finance.sina.com.cn try http://vip.stock.finance.sina.com.cn")
-					url_tmp = "http://vip.stock.finance.sina.com.cn/quotes_service/view/vMS_tradehistory.php?symbol=%s&date=%s" % (symbol, date)
-					continue
-				else:
-					break
-			elif len(rows) == 2:
-				row = rows[1]
-				if list(filter(lambda x: x.get_text() == "该股票没有交易数据", row.findAll(['td','th']))):
-					break
-			try:
-				for row in rows:
-					csvRow = []
-					for cell in row.findAll(['td','th']):
-						text = cell.get_text()
-						if text in ["-100.00%"]:
-							csvRow = []
-							break
-						if page == 1:
-							if text not in ["涨跌幅"]:
-								if "%" not in text:
-									csvRow.append(text.replace(",", ""))
-						else:
-							if text not in ["成交时间", "成交价", "涨跌幅", "价格变动", "成交量(手)", "成交额(元)", "性质"]:
-								if "%" not in text:
-									csvRow.append(text.replace(",", ""))
-					if csvRow:
-						writer.writerow(csvRow)
-			except:
-				logging.error("write csv fail")
-				trace_log()
-			page = page + 1
-			time.sleep(random.uniform(1, 3))
-
-		csvFile.close()
-		df = pd.read_csv(csv_file, names = ['time', 'price', 'change', 'volume', 'amount', 'type'],
-		                   skiprows=[0], encoding = "GBK")
-		return (df)
-
-	def GetHistoryData(self, stock = "", start_date = "", event = None):
+	def GetHistoryData(self, stock = "", start_date = "", end_date= "", event = None):
 		delta = datetime.timedelta(days=1)
 		StockDB = DB(db = self._db, col = stock)
 		logging.info("Getting historyData for %s" % (stock))
@@ -324,55 +196,61 @@ class ShareDB():
 		except:
 			date = datetime.datetime.strptime(start_date, "%Y%m%d")
 
-		logging.debug("last_success date is %s" % (date))
-		if date.strftime("%Y%m%d") >= datetime.datetime.today().strftime("%Y%m%d"):
+		logging.info("last_success date is %s" % (date))
+		if date.strftime("%Y%m%d") > datetime.datetime.today().strftime("%Y%m%d"):
 			logging.info("All the share data were collected, exit the collection progress!")
 			return 0
 
-		today = datetime.datetime.today().strftime("%Y%m%d")
-		k_df = ak.stock_zh_a_hist(symbol=stock, period='daily', start_date=date.strftime("%Y%m%d"), end_date=today)
+		if end_date == "":
+			end_date = datetime.datetime.today().strftime("%Y%m%d")
 
-		k_df.sort_values(["日期"], inplace=True, ignore_index=True)
+		k_df = ak.stock_zh_a_daily(symbol=stock, start_date=date.strftime("%Y%m%d"), end_date=end_date)
 
-		k_qfq_df = ak.stock_zh_a_hist(symbol=stock, period='daily', start_date=date.strftime("%Y%m%d"), end_date=today, adjust='qfq')
-		k_hfq_df = ak.stock_zh_a_hist(symbol=stock, period='daily', start_date=date.strftime("%Y%m%d"), end_date=today, adjust='hfq')
+		k_df.sort_values(["date"], inplace=True, ignore_index=True)
+
+		time.sleep(random.uniform(1, 5))
+		k_qfq_df = ak.stock_zh_a_daily(symbol=stock, start_date=date.strftime("%Y%m%d"), end_date=end_date, adjust='qfq')
+		time.sleep(random.uniform(1, 5))
+		k_hfq_df = ak.stock_zh_a_daily(symbol=stock, start_date=date.strftime("%Y%m%d"), end_date=end_date, adjust='hfq')
+		time.sleep(random.uniform(1, 5))
 
 		k_df_array = json.loads(k_df.to_json(index=False, orient="records"))
 
 		for record in k_df_array:
 			try:
 				stock_doc['_id'] = ObjectId()
-				stock_doc['date'] = datetime.datetime.utcfromtimestamp(record['日期'] / 1000).date()
-				del record['日期']
-				del record['股票代码']
+				stock_doc['date'] = datetime.datetime.utcfromtimestamp(record['date'] / 1000)
+				del record['date']
 				stock_doc['k_data'] = record
 
-				k_qfq_date_df = k_qfq_df[k_qfq_df["日期"] == stock_doc['date']]
+				k_qfq_date_df = k_qfq_df[k_qfq_df["date"] == stock_doc['date'].date()]
 				if k_qfq_date_df.empty:
 					logging.warning(f"Cannot get qfq k data for {stock} in {stock_doc['date']}")
 				else:
-					k_data_qfq = json.loads(k_qfq_date_df.to_json(index=False, orient="records"))
-					del k_data_qfq['日期']
-					del k_data_qfq['股票代码']
+					k_data_qfq = json.loads(k_qfq_date_df.to_json(index=False, orient="records"))[0]
+					del k_data_qfq['date']
 					stock_doc['k_data_qfq'] = k_data_qfq
 
 
-				k_hfq_date_df = k_hfq_df[k_hfq_df["日期"] == stock_doc['date']]
+				k_hfq_date_df = k_hfq_df[k_hfq_df["date"] == stock_doc['date'].date()]
 				if k_hfq_date_df.empty:
 					logging.warning(f"Cannot get hfq k data for {stock} in {stock_doc['date']}")
 				else:
-					k_data_hfq = json.loads(k_hfq_date_df.to_json(index=False, orient="records"))
-					del k_data_hfq['日期']
-					del k_data_qfq['股票代码']
+					k_data_hfq = json.loads(k_hfq_date_df.to_json(index=False, orient="records"))[0]
+					del k_data_hfq['date']
 					stock_doc['k_data_hfq'] = k_data_hfq
+
+				if stock_doc['date'] == datetime.datetime.strptime(end_date, "%Y%m%d"):
+					stock_zh_a_tick_tx_js_df = ak.stock_zh_a_tick_tx_js(symbol=stock)
+					stock_zh_a_tick_tx_js_df_doc = json.loads(stock_zh_a_tick_tx_js_df.to_json(index = False, orient="records"))
+
+					stock_doc['tick'] = stock_zh_a_tick_tx_js_df_doc
 
 				StockDB.insert_one(stock_doc)
 				StockDB.update(_filter = {"type": "Record"}, _update = {"$set": {"last_success": stock_doc['date']}})
 			except:
 				logging.error("Exception!!! GetHistoryData fail")
 				trace_log()
-
-			break
 		return 0
 
 
@@ -392,7 +270,8 @@ if __name__ == '__main__':
 	# print(stock_zh_a_hist_df)
 
 	Share = ShareDB()
-	Share.GetHistoryData(stock='000001', start_date='20150101')
+	Share.UpdateStockInfo()
+	# Share.GetHistoryData(stock='sz000001', start_date='20150101')
 
 	# Share.Get_Tick_Data("000012", date="2018-07-18", retry_count=3, pause=4)
 	# Share.GetStockInfo()
