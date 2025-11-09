@@ -96,53 +96,53 @@ def update_proxy(proxy_queue, proxy_request, event):
                     proxy_queue.put(p)
         time.sleep(10)
 
-# if __name__ == '__main__':
-#     start_time = datetime.datetime.now()
-#     stock_list = get_stock_list()
-#     splited_list = split_stock_list(s_list = stock_list, split = 100)
-
-#     q_1 = mp.Queue()
-#     q_2 = mp.Queue()
-
-#     #Create process to update the proxy queue
-#     do_update_proxy = mp.Event()
-#     do_update_proxy.set()
-#     proxy_process = mp.Process(target=update_proxy, args=(q_1, q_2, do_update_proxy,))
-#     proxy_process.start()
-
-#     #Create process to collect the stock data
-#     process_id = 0
-#     procs = list()
-#     for li in splited_list:
-#         proc = mp.Process(target=stockdb_task, args=(li, process_id, q_1, q_2))
-#         process_id = process_id + 1
-#         procs.append(proc)
-#     for p in procs:
-#         p.start()
-#         time.sleep(5)
-#     for p in procs:
-#         p.join()
-
-#     do_update_proxy.clear()
-#     end_time = datetime.datetime.now()
-#     print ((end_time - start_time).seconds)
-#     os.system("shutdown -s -t 60")
-
 if __name__ == '__main__':
-    log_file = os.path.join(log_path, "ShareDB.log")
-    logging.basicConfig(
-        level=logging.DEBUG)
-    log_file_handler = TimedRotatingFileHandler(filename=log_file, when="D", interval=1, backupCount=10)
-    log_file_handler.setFormatter(logging.Formatter("%(asctime)s: %(message)s"))
-    logging.getLogger().addHandler(log_file_handler)
+    start_time = datetime.datetime.now()
     stock_list = get_stock_list()
+    splited_list = split_stock_list(s_list = stock_list, split = 100)
 
-    Share = ShareDB()
-    cj = http.cookiejar.LWPCookieJar()
-    cookie_support = HTTPCookieProcessor(cj)
-    opener = build_opener(cookie_support)
-    install_opener(opener)
-    for code in stock_list:
-        for tmp in Share.GetHistoryData(sharecode = code, startdate = "2015-01-05"):
-            logging.error("cannot access network dalay 1 hour")
-            time.sleep(3600)
+    q_1 = mp.Queue()
+    q_2 = mp.Queue()
+
+    #Create process to update the proxy queue
+    do_update_proxy = mp.Event()
+    do_update_proxy.set()
+    proxy_process = mp.Process(target=update_proxy, args=(q_1, q_2, do_update_proxy,))
+    proxy_process.start()
+
+    #Create process to collect the stock data
+    process_id = 0
+    procs = list()
+    for li in splited_list:
+        proc = mp.Process(target=stockdb_task, args=(li, process_id, q_1, q_2))
+        process_id = process_id + 1
+        procs.append(proc)
+    for p in procs:
+        p.start()
+        time.sleep(5)
+    for p in procs:
+        p.join()
+
+    do_update_proxy.clear()
+    end_time = datetime.datetime.now()
+    print ((end_time - start_time).seconds)
+    os.system("shutdown -s -t 60")
+
+# if __name__ == '__main__':
+#     log_file = os.path.join(log_path, "ShareDB.log")
+#     logging.basicConfig(
+#         level=logging.DEBUG)
+#     log_file_handler = TimedRotatingFileHandler(filename=log_file, when="D", interval=1, backupCount=10)
+#     log_file_handler.setFormatter(logging.Formatter("%(asctime)s: %(message)s"))
+#     logging.getLogger().addHandler(log_file_handler)
+#     stock_list = get_stock_list()
+
+#     Share = ShareDB()
+#     cj = http.cookiejar.LWPCookieJar()
+#     cookie_support = HTTPCookieProcessor(cj)
+#     opener = build_opener(cookie_support)
+#     install_opener(opener)
+#     for code in stock_list:
+#         for tmp in Share.GetHistoryData(sharecode = code, startdate = "2015-01-05"):
+#             logging.error("cannot access network dalay 1 hour")
+#             time.sleep(3600)

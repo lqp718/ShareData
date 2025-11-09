@@ -474,7 +474,28 @@
 # print(stock_zh_a_hist_df)
 # 
 
-import akshare as ak
+import os
+import multiprocessing
+import requests
 
-stock_zh_a_daily_qfq_df = ak.stock_zh_a_daily(symbol="sz000001", start_date="19910403", end_date="20231027", adjust="qfq")
-print(stock_zh_a_daily_qfq_df)
+def worker_with_env_proxy(url, proxy):
+    os.environ['HTTP_PROXY'] = proxy
+    os.environ['HTTPS_PROXY'] = proxy
+    
+    print(f"Process {multiprocessing.current_process().name} set env proxy: {proxy}")
+    
+    response = requests.get(url)  # 或 third_party_lib.fetch(url)
+    return response.text
+
+if __name__ == '__main__':
+    proxies = [
+        'http://121.43.154.123:8081',
+        'http://8.130.36.163:8080',
+        'http://8.148.23.202:80',
+    ]
+    url = 'http://api.ipify.org'
+    with multiprocessing.Pool() as pool:
+        results = pool.starmap(worker_with_env_proxy, [(url, p) for p in proxies])
+    
+    for res in results:
+        print(res)
