@@ -4,24 +4,25 @@ import numpy as np
 from datetime import datetime
 from pymongo import MongoClient
 import warnings
+import optuna
 warnings.filterwarnings('ignore')
 
 class BalancedBollingerRSIStrategy(bt.Strategy):
     params = (
         # 核心参数 - 轻微放宽以增加交易机会
-        ('rsi_oversold', 32),      # 从30放宽到32
-        ('rsi_overbought', 70),    
+        ('rsi_oversold', 30),
+        ('rsi_overbought', 75),    
         ('bb_period', 20),
-        ('bb_dev', 2),
+        ('bb_dev', 1.8),
         
         # 风险管理 - 保持相对严格
-        ('stop_loss_pct', 0.08),           
-        ('max_drawdown_threshold', 0.10),  
+        ('stop_loss_pct', 0.09),           
+        ('max_drawdown_threshold', 0.09),  
         ('position_size', 0.90),           # 稍微降低仓位到90%
         
         # 移动止盈 - 优化参数
-        ('trailing_stop_trigger', 0.12),   # 从15%降到12%，更早保护利润
-        ('trailing_stop_pct', 0.06),       # 从8%降到6%，收紧移动止盈
+        ('trailing_stop_trigger', 0.15),  
+        ('trailing_stop_pct', 0.074),
         
         # 新增：简单趋势过滤
         ('ma_fast', 10),
@@ -403,5 +404,89 @@ def run_backtest_with_mongodb():
             client.close()
 
 
+def objective(trial):
+
+    # # 核心参数 - 轻微放宽以增加交易机会
+    # ('rsi_oversold', 30),      # 从30放宽到32
+    # ('rsi_overbought', 66),    
+    # ('bb_period', 20),
+    # ('bb_dev', 1.98),
+    
+    # # 风险管理 - 保持相对严格
+    # ('stop_loss_pct', 0.08),           
+    # ('max_drawdown_threshold', 0.10),  
+    # ('position_size', 0.90),           # 稍微降低仓位到90%
+    
+    # # 移动止盈 - 优化参数
+    # ('trailing_stop_trigger', 0.13),   # 从15%降到12%，更早保护利润
+    # ('trailing_stop_pct', 0.06),       # 从8%降到6%，收紧移动止盈
+    
+    # # 新增：简单趋势过滤
+    # ('ma_fast', 10),
+    # ('ma_slow', 20),
+    
+    # # 新增：波动率过滤
+    # ('min_volume_multiplier', 0.7),    # 成交量过滤
+
+    # 使用Optuna进行贝叶斯优化
+    rsi_oversold = trial.suggest_int('rsi_oversold', 25, 35)
+    rsi_overbought = trial.suggest_int('rsi_overbought', 65, 75)
+    #ma_fast = trial.suggest_int('ma_fast', 5, 15)
+    #ma_slow = trial.suggest_int('ma_slow', 15, 25)
+    bb_dev = trial.suggest_float('bb_dev', 1.5, 2.5)
+    trailing_stop_trigger = trial.suggest_float('trailing_stop_trigger', 0.08, 0.16)
+    stop_loss_pct = trial.suggest_float('stop_loss_pct', 0.05, 0.15)
+    max_drawdown_threshold = trial.suggest_float('max_drawdown_threshold', 0.05, 0.15)
+    trailing_stop_pct = trial.suggest_float('trailing_stop_pct', 0.05, 0.10)
+
+
+    MONGODB_URI = "mongodb://localhost:27017/"
+    DATABASE_NAME = "my_stock"
+    COLLECTION_NAME = "sz000001"
+    client = MongoClient(MONGODB_URI)
+    db = client[DATABASE_NAME]
+    collection = db[COLLECTION_NAME]
+    print("成功连接到MongoDB")
+    
+    df = load_data_from_mongodb(
+        collection=collection,
+        start_date='2015-01-01',
+        end_date='2025-11-08',
+        price_type='qfq'
+    )
+    # 创建策略实例并运行回测
+    cerebro = bt.Cerebro()
+    cerebro.addstrategy(
+        BalancedBollingerRSIStrategy,
+        rsi_oversold=rsi_oversold,
+        rsi_overbought=rsi_overbought,
+        #ma_fast=ma_fast,
+        #ma_slow=ma_slow,
+        bb_dev=bb_dev,
+        trailing_stop_trigger=trailing_stop_trigger,
+        stop_loss_pct=stop_loss_pct,
+        max_drawdown_threshold=max_drawdown_threshold,
+        trailing_stop_pct=trailing_stop_pct
+    )
+    data = create_backtrader_data(df)
+    cerebro.adddata(data)
+    
+    initial_cash = 100000.0
+    cerebro.broker.setcash(initial_cash)
+    cerebro.broker.setcommission(commission=0.000182)
+    cerebro.broker.set_slippage_perc(0.001)
+    
+    cerebro.addanalyzer(bt.analyzers.Returns, _name='returns')
+
+    results = cerebro.run()
+    strat = results[0]
+
+    returns_analysis = strat.analyzers.returns.get_analysis()
+    annual_return = returns_analysis.get('rnorm', 0)
+    #sharpe = strat.analyzers.sharpe.get_analysis().get('sharperatio', 0)
+    return annual_return if annual_return is not None else -100
+
 if __name__ == '__main__':
     run_backtest_with_mongodb()
+    #study = optuna.create_study(direction='maximize')
+    #study.optimize(objective, n_trials=1000)
