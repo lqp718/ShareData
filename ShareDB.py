@@ -271,7 +271,7 @@ if __name__ == '__main__':
 
 	Share = ShareDB()
 	Share.UpdateStockInfo()
-	Share.GetHistoryData(stock='sz000001', start_date='20150101')
+	Share.GetHistoryData(stock='sz002371', start_date='20150101')
 
 	# Share.Get_Tick_Data("000012", date="2018-07-18", retry_count=3, pause=4)
 	# Share.GetStockInfo()

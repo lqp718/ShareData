@@ -5,31 +5,37 @@ from datetime import datetime
 from pymongo import MongoClient
 import warnings
 import optuna
+
 warnings.filterwarnings('ignore')
 
 class BalancedBollingerRSIStrategy(bt.Strategy):
     params = (
-        # 核心参数 - 轻微放宽以增加交易机会
-        ('rsi_oversold', 30),
-        ('rsi_overbought', 75),    
+        # 核心参数
+        ('min_buy_score', 0.4),        # 最低买入分数阈值
+        ('rsi_oversold', 30),          # 标准超卖阈值
         ('bb_period', 20),
-        ('bb_dev', 1.8),
+        ('bb_dev', 2.0),               # 标准布林带宽度
         
-        # 风险管理 - 保持相对严格
-        ('stop_loss_pct', 0.09),           
-        ('max_drawdown_threshold', 0.09),  
-        ('position_size', 0.90),           # 稍微降低仓位到90%
+        # 风险管理
+        ('stop_loss_pct', 0.12),           
+        ('max_drawdown_threshold', 0.05),  # 比固定止损更敏感
+        ('position_size_base', 0.90),      # 基础仓位
         
-        # 移动止盈 - 优化参数
-        ('trailing_stop_trigger', 0.15),  
-        ('trailing_stop_pct', 0.074),
+        # 移动止盈
+        ('trailing_stop_trigger', 0.05),   # 收益5%激活
+        ('trailing_stop_pct', 0.03),       # 回撤3%止损
         
-        # 新增：简单趋势过滤
-        ('ma_fast', 10),
-        ('ma_slow', 20),
+        # 趋势过滤
+        ('ma_fast', 5),
+        ('ma_slow', 30),
         
-        # 新增：波动率过滤
-        ('min_volume_multiplier', 0.7),    # 成交量过滤
+        # 波动率控制
+        ('use_atr_filter', True),
+        ('atr_period', 14),
+        ('max_volatility_ratio', 0.08),    # 波动率>6%不交易
+        
+        # 动态仓位（可选）
+        ('use_dynamic_position', False),   # 默认关闭，可开启
     )
     
     def __init__(self):
@@ -46,15 +52,17 @@ class BalancedBollingerRSIStrategy(bt.Strategy):
         # 趋势指标
         self.ma_fast = bt.indicators.SMA(self.datas[0], period=self.params.ma_fast)
         self.ma_slow = bt.indicators.SMA(self.datas[0], period=self.params.ma_slow)
+        self.ma200 = bt.indicators.SMA(self.datas[0], period=200)
         
-        # 新增：成交量指标
+        # 成交量 & 波动率
         self.volume_sma = bt.indicators.SMA(self.datas[0].volume, period=20)
+        self.atr = bt.indicators.ATR(self.datas[0], period=self.params.atr_period)
         
         # 跟踪变量
         self.entry_price = None
         self.peak_price = None
         self.stop_loss_level = None
-        self.trailing_stop_level = None  # 新增：移动止盈位
+        self.trailing_stop_level = None
         self.order = None
         self.trade_count = 0
         self.entry_bar = None
@@ -70,7 +78,6 @@ class BalancedBollingerRSIStrategy(bt.Strategy):
                 self.peak_price = order.executed.price
                 self.trade_count += 1
                 self.entry_bar = len(self)
-                # 重置移动止盈
                 self.trailing_stop_level = None
             elif order.issell():
                 if self.entry_price:
@@ -91,91 +98,137 @@ class BalancedBollingerRSIStrategy(bt.Strategy):
             
         self.order = None
 
-    def is_trend_positive(self):
+    def has_core_conditions(self):
+        """核心条件：价格触及布林下轨 + RSI 超卖"""
+        price_at_lower = self.dataclose[0] <= self.bb.lines.bot[0]
+        rsi_low = self.rsi[0] < self.params.rsi_oversold  # 如 35
+        volume_ok = self.datas[0].volume[0] > self.volume_sma[0] * 0.3  # 非零成交
+        return price_at_lower and rsi_low and volume_ok
 
-        if len(self.ma_fast) < 5 or len(self.ma_slow) < 5:
-            return True
 
-        ma_condition = self.ma_fast[0] > self.ma_slow[0] * 0.90
-        price_condition = self.dataclose[0] > self.ma_slow[0] * 0.88
+    def calculate_buy_score(self):
+        score = 0.0
+        max_score = 0.0
+
+        # 1. 趋势位置加分：在 MA200 上方 +0.5，下方不扣分
+        max_score += 0.5
+        if len(self.ma200) >= 200 and self.dataclose[0] > self.ma200[0]:
+            score += 0.5
+
+        # 2. 波动率适中加分：ATR/Close 在 2%~8% 之间最理想
+        max_score += 0.2
+        if len(self.atr) >= self.params.atr_period:
+            vol_ratio = self.atr[0] / self.dataclose[0]
+            if 0.02 <= vol_ratio <= 0.08:
+                score += 0.2
+            elif vol_ratio > 0.15:
+                # 极高波动不加分也不减分（恐慌可能是机会）
+                pass
+
+        # 3. 成交量放大加分：当日量 > 20日均量 * 0.8
+        max_score += 0.2
+        if len(self.volume_sma) >= 20:
+            if self.datas[0].volume[0] > self.volume_sma[0] * 0.8:
+                score += 0.2
+
+        # 4. RSI 越低分越高（30以下满分，35以上0分）
+        max_score += 0.3
+        rsi = self.rsi[0]
+        if rsi <= 30:
+            score += 0.3
+        elif rsi < 35:
+            score += 0.3 * (35 - rsi) / 5  # 线性插值
+
+        return score / max_score if max_score > 0 else 0.0
+
+    def calculate_position_size(self, cash):
+        """动态仓位：波动率越高，仓位越低"""
+        if not self.params.use_dynamic_position:
+            return int((cash * self.params.position_size_base) / self.dataclose[0])
         
-        return ma_condition or price_condition
+        if len(self.atr) < self.params.atr_period:
+            vol_factor = 1.0
+        else:
+            volatility_ratio = self.atr[0] / self.dataclose[0]
+            vol_factor = max(0.5, min(1.0, 1.0 - (volatility_ratio / self.params.max_volatility_ratio)))
+        
+        size = int((cash * self.params.position_size_base * vol_factor) / self.dataclose[0])
+        return (size // 100) * 100
 
-    def is_volume_adequate(self):
-        """成交量过滤 - 避免在极度缩量时买入"""
-        if len(self.volume_sma) < 5:
-            return True
-            
-        return self.datas[0].volume[0] > self.volume_sma[0] * self.params.min_volume_multiplier
+    def is_bounce_possible(self):
+        """价格不能连续N天下跌"""
+        closes = [self.dataclose[i] for i in range(-3, 1)]  # 最近4根K线收盘价
+        # 如果最近3天都在跌，跳过
+        declines = sum(1 for i in range(1, len(closes)) if closes[i] < closes[i-1])
+        return declines < 3
 
     def should_take_profit(self, current_return):
-        """分级止盈条件"""
+        """精简止盈：只保留25%+超买条件"""
         if not self.position:
-            return False
+            return False, ""
             
         current_rsi = self.rsi[0]
-        price_at_upper = self.dataclose[0] >= self.bb.lines.top[0] * 0.98
-        
-        # 分级止盈策略
-        if current_return > 0.60 and current_rsi > 75:
-            return True, "超高收益止盈"
-        elif current_return > 0.40 and current_rsi > 70 and price_at_upper:
-            return True, "高收益+技术指标止盈"
-        elif current_return > 0.25 and current_rsi > 75:
+        if current_return > 0.25 and current_rsi > 75:
             return True, "收益+超买止盈"
             
         return False, ""
+
+    def should_buy(self):
+        # 第一层：核心条件必须满足
+        if not self.has_core_conditions():
+            return False
+
+        # 第二层：计算信心分数
+        buy_score = self.calculate_buy_score()
+
+        # 第三层：动态阈值（可参数化）
+        min_score = self.params.min_buy_score  # 比如 0.4
+
+        if buy_score >= min_score:
+            self.log(f"✅ 买入信号: Score={buy_score:.2f} "
+                     f"(RSI={self.rsi[0]:.1f}, Close={self.dataclose[0]:.2f})")
+            return True
+        else:
+            # self.log(f"⚠️ 潜在信号但分数不足: Score={buy_score:.2f}")
+            return False
 
     def next(self):
         if self.order:
             return
 
-        # 确保指标已就绪
-        if (len(self.rsi) < 15 or len(self.bb.lines.bot) < 21 or 
-            len(self.volume_sma) < 5):
+        # 确保指标就绪
+        min_len = max(15, self.params.bb_period + 1, self.params.ma_slow, self.params.atr_period)
+        if len(self) < min_len:
             return
 
         if not self.position:
-            # 买入条件 - 基于原始成功策略，增加简单趋势过滤
-            price_at_lower = self.dataclose[0] <= self.bb.lines.bot[0]
-            rsi_low = self.rsi[0] < self.params.rsi_oversold
-            trend_ok = self.is_trend_positive()
-            volume_ok = self.is_volume_adequate()
-            
-            if price_at_lower and rsi_low and trend_ok and volume_ok:
+            if self.should_buy():
                 cash = self.broker.getcash()
-                size = int((cash * self.params.position_size) / self.dataclose[0])
-                size = (size // 100) * 100
+                size = self.calculate_position_size(cash)
+                size = (size // 100) * 100  # A股100股整数倍
 
                 if size > 0:
                     self.log(f'BUY: Close={self.dataclose[0]:.2f}, RSI={self.rsi[0]:.1f}, '
-                           f'BB Lower={self.bb.lines.bot[0]:.2f}, Volume_OK={volume_ok}')
+                           f'BB Lower={self.bb.lines.bot[0]:.2f}')
                     self.order = self.buy(size=size)
-                    # 设置止损位
                     self.stop_loss_level = self.dataclose[0] * (1 - self.params.stop_loss_pct)
                 
         else:
-            # 更新最高价
             self.peak_price = max(self.peak_price, self.dataclose[0])
-            
             current_return = (self.dataclose[0] - self.entry_price) / self.entry_price
             current_drawdown = (self.peak_price - self.dataclose[0]) / self.peak_price
             
-            # 移动止盈逻辑
+            # 移动止盈
             if current_return >= self.params.trailing_stop_trigger:
-                # 计算移动止盈位
                 new_trailing_stop = self.peak_price * (1 - self.params.trailing_stop_pct)
-                
-                # 如果是第一次激活或者需要更新到更高的位置
                 if self.trailing_stop_level is None or new_trailing_stop > self.trailing_stop_level:
                     self.trailing_stop_level = new_trailing_stop
-                    self.log(f"移动止盈激活/更新: 当前收益率{current_return:+.2%}, 止盈位={self.trailing_stop_level:.2f}")
+                    self.log(f"移动止盈激活/更新: 收益率{current_return:+.2%}, 止盈位={self.trailing_stop_level:.2f}")
 
-            # 卖出条件
             sell_signal = False
             reason = ""
             
-            # 条件1: 主动止盈（分级）
+            # 条件1: 主动止盈
             take_profit, profit_reason = self.should_take_profit(current_return)
             if take_profit:
                 sell_signal = True
@@ -209,6 +262,8 @@ class BalancedBollingerRSIStrategy(bt.Strategy):
         print(f"\n策略回测结束")
         print(f"总交易次数: {self.trade_count}")
 
+
+# ==================== 数据加载 & 回测运行 ====================
 def load_data_from_mongodb(collection, start_date=None, end_date=None, price_type='qfq'):
     query = {}
     if start_date or end_date:
@@ -221,15 +276,7 @@ def load_data_from_mongodb(collection, start_date=None, end_date=None, price_typ
     cursor = collection.find(query).sort('date', 1)
     data_list = []
     for doc in cursor:
-        if price_type == 'normal':
-            k_data = doc.get('k_data', {})
-        elif price_type == 'qfq':
-            k_data = doc.get('k_data_qfq', {})
-        elif price_type == 'hfq':
-            k_data = doc.get('k_data_hfq', {})
-        else:
-            k_data = doc.get('k_data_qfq', {})
-        
+        k_data = doc.get(f'k_data_{price_type}', {}) if price_type != 'normal' else doc.get('k_data', {})
         if not k_data or 'open' not in k_data:
             continue
             
@@ -241,9 +288,6 @@ def load_data_from_mongodb(collection, start_date=None, end_date=None, price_typ
             'low': k_data.get('low', 0),
             'close': k_data.get('close', 0),
             'volume': k_data.get('volume', 0),
-            'amount': k_data.get('amount', 0),
-            'outstanding_share': k_data.get('outstanding_share', 0),
-            'turnover': k_data.get('turnover', 0)
         })
     
     if not data_list:
@@ -257,7 +301,7 @@ def load_data_from_mongodb(collection, start_date=None, end_date=None, price_typ
     return df
 
 def create_backtrader_data(df):
-    data = bt.feeds.PandasData(
+    return bt.feeds.PandasData(
         dataname=df,
         datetime=None,
         open='open',
@@ -267,7 +311,6 @@ def create_backtrader_data(df):
         volume='volume',
         openinterest=-1
     )
-    return data
 
 def run_backtest_with_mongodb():
     MONGODB_URI = "mongodb://localhost:27017/"
@@ -282,7 +325,7 @@ def run_backtest_with_mongodb():
         
         df = load_data_from_mongodb(
             collection=collection,
-            start_date='2020-01-01',
+            start_date='2015-01-01',
             end_date='2025-11-08',
             price_type='qfq'
         )
@@ -298,28 +341,25 @@ def run_backtest_with_mongodb():
         
         initial_cash = 100000.0
         cerebro.broker.setcash(initial_cash)
-        cerebro.broker.setcommission(commission=0.000182)
-        cerebro.broker.set_slippage_perc(0.001)
+        cerebro.broker.setcommission(commission=0.000182)  # 万1.82
+        cerebro.broker.set_slippage_perc(0.001)           # 0.1%滑点
         
+        # 分析器
         cerebro.addanalyzer(bt.analyzers.Returns, _name='returns')
-        cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe')
+        cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe', riskfreerate=0.02)
         cerebro.addanalyzer(bt.analyzers.DrawDown, _name='drawdown')
         cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='trades')
-        cerebro.addanalyzer(bt.analyzers.TimeReturn, _name='timereturn')
         cerebro.addobserver(bt.observers.Value)
-        cerebro.addobserver(bt.observers.DrawDown)
         cerebro.addobserver(bt.observers.BuySell)
         
         print(f'初始资金: {initial_cash:,.2f}')
         print(f'数据时间范围: {df.index.min()} 到 {df.index.max()}')
-        print(f'数据条数: {len(df)}')
         
-        print("正在运行回测...")
         results = cerebro.run()
         strat = results[0]
         
         final_value = cerebro.broker.getvalue()
-        print(f'最终资金: {final_value:,.2f}')
+        print(f'\n最终资金: {final_value:,.2f}')
         
         print("\n" + "="*50)
         print("回测结果汇总")
@@ -393,100 +433,66 @@ def run_backtest_with_mongodb():
             cerebro.plot(style='candlestick', volume=False)
         else:
             print("\n无交易，跳过图表生成")
-        
+            
     except Exception as e:
         print(f"回测过程中出现错误: {e}")
         import traceback
         traceback.print_exc()
-    
     finally:
         if 'client' in locals():
             client.close()
 
 
+# ==================== Optuna 优化（目标：夏普比率）====================
 def objective(trial):
-
-    # # 核心参数 - 轻微放宽以增加交易机会
-    # ('rsi_oversold', 30),      # 从30放宽到32
-    # ('rsi_overbought', 66),    
-    # ('bb_period', 20),
-    # ('bb_dev', 1.98),
-    
-    # # 风险管理 - 保持相对严格
-    # ('stop_loss_pct', 0.08),           
-    # ('max_drawdown_threshold', 0.10),  
-    # ('position_size', 0.90),           # 稍微降低仓位到90%
-    
-    # # 移动止盈 - 优化参数
-    # ('trailing_stop_trigger', 0.13),   # 从15%降到12%，更早保护利润
-    # ('trailing_stop_pct', 0.06),       # 从8%降到6%，收紧移动止盈
-    
-    # # 新增：简单趋势过滤
-    # ('ma_fast', 10),
-    # ('ma_slow', 20),
-    
-    # # 新增：波动率过滤
-    # ('min_volume_multiplier', 0.7),    # 成交量过滤
-
-    # 使用Optuna进行贝叶斯优化
+    # 参数搜索空间
     rsi_oversold = trial.suggest_int('rsi_oversold', 25, 35)
-    rsi_overbought = trial.suggest_int('rsi_overbought', 65, 75)
-    #ma_fast = trial.suggest_int('ma_fast', 5, 15)
-    #ma_slow = trial.suggest_int('ma_slow', 15, 25)
-    bb_dev = trial.suggest_float('bb_dev', 1.5, 2.5)
-    trailing_stop_trigger = trial.suggest_float('trailing_stop_trigger', 0.08, 0.16)
-    stop_loss_pct = trial.suggest_float('stop_loss_pct', 0.05, 0.15)
-    max_drawdown_threshold = trial.suggest_float('max_drawdown_threshold', 0.05, 0.15)
-    trailing_stop_pct = trial.suggest_float('trailing_stop_pct', 0.05, 0.10)
-
-
-    MONGODB_URI = "mongodb://localhost:27017/"
-    DATABASE_NAME = "my_stock"
-    COLLECTION_NAME = "sz000001"
-    client = MongoClient(MONGODB_URI)
-    db = client[DATABASE_NAME]
-    collection = db[COLLECTION_NAME]
-    print("成功连接到MongoDB")
+    bb_dev = trial.suggest_float('bb_dev', 1.8, 2.3)
+    trailing_stop_trigger = trial.suggest_float('trailing_stop_trigger', 0.03, 0.08)
+    trailing_stop_pct = trial.suggest_float('trailing_stop_pct', 0.02, 0.05)
+    stop_loss_pct = trial.suggest_float('stop_loss_pct', 0.08, 0.15)
+    max_drawdown_threshold = trial.suggest_float('max_drawdown_threshold', 0.03, 0.07)
     
-    df = load_data_from_mongodb(
-        collection=collection,
-        start_date='2015-01-01',
-        end_date='2025-11-08',
-        price_type='qfq'
-    )
-    # 创建策略实例并运行回测
+    # 加载数据（复用函数）
+    client = MongoClient("mongodb://localhost:27017/")
+    db = client["my_stock"]
+    collection = db["sz002371"]
+    df = load_data_from_mongodb(collection, '2015-01-01', '2025-11-08', 'qfq')
+    client.close()
+    
+    # 运行回测
     cerebro = bt.Cerebro()
     cerebro.addstrategy(
         BalancedBollingerRSIStrategy,
         rsi_oversold=rsi_oversold,
-        rsi_overbought=rsi_overbought,
-        #ma_fast=ma_fast,
-        #ma_slow=ma_slow,
         bb_dev=bb_dev,
         trailing_stop_trigger=trailing_stop_trigger,
+        trailing_stop_pct=trailing_stop_pct,
         stop_loss_pct=stop_loss_pct,
         max_drawdown_threshold=max_drawdown_threshold,
-        trailing_stop_pct=trailing_stop_pct
+        ma_fast=5,
+        ma_slow=30,
+        use_atr_filter=True,
+        use_dynamic_position=False  # 优化时关闭动态仓位
     )
-    data = create_backtrader_data(df)
-    cerebro.adddata(data)
-    
-    initial_cash = 100000.0
-    cerebro.broker.setcash(initial_cash)
-    cerebro.broker.setcommission(commission=0.000182)
+    cerebro.adddata(create_backtrader_data(df))
+    cerebro.broker.setcash(100000.0)
+    cerebro.broker.setcommission(0.000182)
     cerebro.broker.set_slippage_perc(0.001)
+    cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='sharpe')
     
-    cerebro.addanalyzer(bt.analyzers.Returns, _name='returns')
-
-    results = cerebro.run()
-    strat = results[0]
-
-    returns_analysis = strat.analyzers.returns.get_analysis()
-    annual_return = returns_analysis.get('rnorm', 0)
-    #sharpe = strat.analyzers.sharpe.get_analysis().get('sharperatio', 0)
-    return annual_return if annual_return is not None else -100
+    try:
+        results = cerebro.run()
+        sharpe = results[0].analyzers.sharpe.get_analysis().get('sharperatio', -1)
+        return sharpe if sharpe is not None else -1
+    except:
+        return -1
 
 if __name__ == '__main__':
+    # 运行基础回测
     run_backtest_with_mongodb()
+    
+    # 如需自动优化，取消注释以下代码：
     #study = optuna.create_study(direction='maximize')
-    #study.optimize(objective, n_trials=1000)
+    #study.optimize(objective, n_trials=50)
+    #print("最佳参数:", study.best_params)
